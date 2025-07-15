@@ -9,7 +9,7 @@ from typing import Tuple # Import Tuple from the typing module
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- Constants ---
-GOOGLE_SCRIPT_ENDPOINT = "https://script.google.com/macros/s/AKfycbxk2QmeLyubXBCuJ5qGh9Cj2Xx-Ug88OeegtGmpPcWka85rCzVE8kaW3bjgoIw2Mw-N/exec?type=print"
+GOOGLE_SCRIPT_ENDPOINT = "<app script URL goes here>/exec?type=print"
 
 def post_data_to_google_script(data: dict) -> Tuple[dict, int]: # Use Tuple instead of tuple[dict, int]
     """
