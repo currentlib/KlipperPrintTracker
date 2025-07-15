@@ -5,20 +5,15 @@ This repository provides a set of scripts to automate the reporting of 3D print 
 Current Status
 
 Done:
-
-    slicer_gcode_post_processor.py: Python script for slicer post-processing to inject reporting commands into G-code.
-
-    klipper_post_print_reporter.py: Python script to be run on the Klipper host, responsible for collecting print data and sending it to Google Sheets.
-
-    klipper_post_print_reporter_invoke.sh: A simple shell script to invoke the klipper_post_print_reporter.py script.
-
-    gsheet_data_handler.gs: Google Apps Script to receive data from the Klipper host and append it as a new row in your specified Google Sheet.
+- slicer_gcode_post_processor.py: Python script for slicer post-processing to inject reporting commands into G-code.
+- klipper_post_print_reporter.py: Python script to be run on the Klipper host, responsible for collecting print data and sending it to Google Sheets.
+- klipper_post_print_reporter_invoke.sh: A simple shell script to invoke the klipper_post_print_reporter.py script.
+- gsheet_data_handler.gs: Google Apps Script to receive data from the Klipper host and append it as a new row in your specified Google Sheet.
 
 To-Do:
+- Figure out how to properly configure and invoke slicer_gcode_post_processor.ps1 as a post-processing script for users who prefer PowerShell or do not have Python installed.
 
-    Figure out how to properly configure and invoke slicer_gcode_post_processor.ps1 as a post-processing script for users who prefer PowerShell or do not have Python installed.
-
-Setup Instructions:
+#### Setup Instructions:
 1. Create Google Sheet and App Script
 
     Go to Google Sheets and create a new spreadsheet.
@@ -37,13 +32,13 @@ Setup Instructions:
 
     Configure the deployment:
 
-        Description: (Optional) Add a description like "Klipper Print Reporter API".
+    - Description: (Optional) Add a description like "Klipper Print Reporter API".
 
-        Execute as: Me (your Google account).
+    - Execute as: Me (your Google account).
 
-        Who has access: Anyone (this allows your Klipper printer to send data without authentication challenges).
+    -  Who has access: Anyone (this allows your Klipper printer to send data without authentication challenges).
 
-    Click Deploy.
+   Click Deploy.
 
     If prompted, authorize the script to access your Google Sheet.
 
@@ -89,12 +84,11 @@ Setup Instructions:
         {action_respond_info("Parameter 'ITEMS' is required")}
       {% endif %}
 ```
-    Save your printer.cfg and restart Klipper for the changes to take effect.
+   Save your printer.cfg and restart Klipper for the changes to take effect.
 
 7. Final Path Check
 
     Double-check all file paths in slicer_gcode_post_processor.py, klipper_post_print_reporter.py, klipper_post_print_reporter_invoke.sh, and your printer.cfg to ensure they accurately reflect where you've placed the files on your system and Klipper host.
 
 Customization: 
-    
-    You can modify slicer_gcode_post_processor.py to include more or fewer parameters based on what you want to track. Similarly, adjust gsheet_data_handler.gs to match the column order and data types you expect in your Google Sheet.
+   You can modify slicer_gcode_post_processor.py to include more or fewer parameters based on what you want to track. Similarly, adjust gsheet_data_handler.gs to match the column order and data types you expect in your Google Sheet.
