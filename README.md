@@ -6,6 +6,19 @@ This project provides a set of scripts to automate reporting of 3D print job dat
 
 ---
 
+## 🧠 How It Works
+
+1. In your slicer, enable the **"Exclude objects"** feature. This causes the generated G-code to include metadata for each object on the build plate.
+2. The `slicer_gcode_post_processor.py` script parses this metadata and generates a JSON-like string containing the object list.
+3. It then injects a call to the `INCREMENT_PRINT_COUNT` G-code macro with the `ITEMS` argument set to this object data.
+4. Once the print completes, the `INCREMENT_PRINT_COUNT` macro is invoked by Klipper.
+5. This triggers the execution of `klipper_post_print_reporter_invoke.sh`, which in turn runs the `klipper_post_print_reporter.py` script.
+6. The Python script parses the JSON and sends the print data to the configured destination — by default, a Google Sheet.
+7. The script can be customized to send data to other systems (e.g., databases, local files, REST APIs) instead of or in addition to Google Sheets.
+
+---
+
+
 ## ✅ Current Status
 
 ### Done
@@ -18,6 +31,13 @@ This project provides a set of scripts to automate reporting of 3D print job dat
 - Implement a PowerShell alternative to `slicer_gcode_post_processor.py` for users without Python or on Windows systems.
 
 ---
+
+## ⚠️ Current Limitations and Known Issues
+
+1. The script does **not track the actual print success or failure of individual objects** — only that they were scheduled to print. If some objects print poorly and you exclude them during the print (using "Exclude Object"), this will **not be reflected automatically** in the report. In such cases, you need to **manually correct** the data in the Google Sheet or adjust the script to allow manual review before reporting.
+
+---
+
 
 ## ⚙️ Setup Instructions
 
@@ -120,6 +140,20 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 
 Цей репозиторій містить набір скриптів для автоматизованого надсилання даних про 3D-друк із вашого принтера на базі Klipper безпосередньо в Google Таблицю. Він інтегрується з постобробкою слайсера та плагіном G-code shell команд для Klipper, щоб збирати метрики друку та надсилати їх у централізовану таблицю для відстеження й аналізу.
 
+---
+
+## 🧠 Як це працює
+
+1. У слайсері увімкніть функцію **"Exclude objects"** (виключити об'єкти). Це призведе до того, що згенерований G-code включатиме метадані для кожного об'єкта на платформі.
+2. Скрипт `slicer_gcode_post_processor.py` зчитує ці метадані та формує рядок у форматі, подібному до JSON, який містить список об'єктів.
+3. Потім цей скрипт додає виклик G-code макроса `INCREMENT_PRINT_COUNT` з аргументом `ITEMS`, що містить сформовані дані об'єктів.
+4. Після завершення друку макрос `INCREMENT_PRINT_COUNT` викликається Klipper'ом.
+5. Це запускає виконання скрипта `klipper_post_print_reporter_invoke.sh`, який, у свою чергу, запускає `klipper_post_print_reporter.py`.
+6. Python-скрипт розбирає JSON і надсилає дані про друк на вказану ціль — за замовчуванням у Google Sheet.
+7. Скрипт можна змінити, щоб надсилати дані в інші системи (наприклад, бази даних, локальні файли, REST API) замість або разом із Google Sheets.
+
+---
+
 ## Поточний статус
 
 **Зроблено:**
@@ -132,6 +166,13 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 - Налаштувати та описати запуск `slicer_gcode_post_processor.ps1` як PowerShell-скрипту постобробки для користувачів, які не мають Python або надають перевагу PowerShell.
 
 ---
+
+## ⚠️ Поточні обмеження та недоліки
+
+1. Скрипт не відслідковує статус успішності друку окремих об'єктів — лише те, що вони були заплановані до друку. Якщо під час друку деякі об'єкти виходять неякісними, і ви виключаєте їх прямо під час друку (через "Exclude Object"), ця інформація **не враховується автоматично**. У такому випадку потрібно **вручну відкоригувати** дані в Google Sheet.
+
+---
+
 
 ### Інструкція з налаштування
 
