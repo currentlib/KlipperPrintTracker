@@ -87,7 +87,7 @@ Place the following files in a suitable directory on your Klipper host (e.g., `/
 1. Open your slicer.
 2. Locate the printer settings or output options where you can specify a post-processing script.
 3. Add the full path to `slicer_gcode_post_processor.py` as a post-processing script.
-
+![Example of Post-processing script setup.](/img/slicer_post_processing_script.png)
 ---
 
 ### 6. Update Klipper G-code Macro Config
@@ -131,7 +131,11 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 - You can modify `slicer_gcode_post_processor.py` to track additional parameters or simplify the command injection.
 - Adjust `gsheet_data_handler.gs` to match your Google Sheet’s expected column order and data types.
 
+---
 
+## Result
+
+![Screenshot of the final sheet.](/img/gsheet_example.png)
 
 
 # KlipperPrintTracker
@@ -209,6 +213,7 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 
 - Відкрийте налаштування вашого слайсера.
 - У розділі постобробки вкажіть повний шлях до `slicer_gcode_post_processor.py` як скрипт обробки після слайсингу.
+![Example of Post-processing script setup.](/img/slicer_post_processing_script.png)
 
 #### 6. Оновіть конфігурацію макросів у Klipper
 
@@ -246,3 +251,9 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 ### Налаштування під себе
 
 Ви можете змінити `slicer_gcode_post_processor.py`, щоб додати або прибрати параметри залежно від того, що саме хочете відстежувати. Аналогічно, змініть `gsheet_data_handler.gs`, щоб адаптувати порядок колонок та типи даних під вашу Google Таблицю.
+
+---
+
+## Результат
+
+![Screenshot of the final sheet.](/img/gsheet_example.png)
