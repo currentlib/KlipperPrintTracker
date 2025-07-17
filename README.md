@@ -87,7 +87,7 @@ Place the following files in a suitable directory on your Klipper host (e.g., `/
 1. Open your slicer.
 2. Locate the printer settings or output options where you can specify a post-processing script.
 3. Add the full path to `slicer_gcode_post_processor.py` as a post-processing script.
-![Example of Post-processing script setup.](/img/slicer_post_processing_script.png)
+![Example of Post-processing script setup.](/img/slicer_post_processing_sample.png)
 ---
 
 ### 6. Update Klipper G-code Macro Config
@@ -135,7 +135,7 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 
 ## Result
 
-![Screenshot of the final sheet.](/img/gsheet_example.png)
+![Screenshot of the final sheet.](/img/gsheet_sample.png)
 
 
 # KlipperPrintTracker
@@ -213,7 +213,7 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 
 - Відкрийте налаштування вашого слайсера.
 - У розділі постобробки вкажіть повний шлях до `slicer_gcode_post_processor.py` як скрипт обробки після слайсингу.
-![Example of Post-processing script setup.](/img/slicer_post_processing_script.png)
+![Example of Post-processing script setup.](/img/slicer_post_processing_sample.png)
 
 #### 6. Оновіть конфігурацію макросів у Klipper
 
@@ -256,4 +256,4 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 
 ## Результат
 
-![Screenshot of the final sheet.](/img/gsheet_example.png)
+![Screenshot of the final sheet.](/img/gsheet_sample.png)
