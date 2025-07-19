@@ -9,7 +9,7 @@ This project provides a set of scripts to automate reporting of 3D print job dat
 ## 🧠 How It Works
 
 1. In your slicer, enable the **"Exclude objects"** feature. This causes the generated G-code to include metadata for each object on the build plate.
-2. The `slicer_gcode_post_processor.py` script parses this metadata and generates a JSON-like string containing the object list.
+2. The `slicer_gcode_post_processor` script parses this metadata and generates a JSON-like string containing the object list.
 3. It then injects a call to the `INCREMENT_PRINT_COUNT` G-code macro with the `ITEMS` argument set to this object data.
 4. Once the print completes, the `INCREMENT_PRINT_COUNT` macro is invoked by Klipper.
 5. This triggers the execution of `klipper_post_print_reporter_invoke.sh`, which in turn runs the `klipper_post_print_reporter.py` script.
@@ -23,12 +23,10 @@ This project provides a set of scripts to automate reporting of 3D print job dat
 
 ### Done
 - `slicer_gcode_post_processor.py` — Injects reporting commands into G-code as a slicer post-processing step.
+- `slicer_gcode_post_processor.ps1` - PowerShell alternative for users without Python on Windows systems.
 - `klipper_post_print_reporter.py` — Collects print metadata and sends it to Google Sheets from the Klipper host.
 - `klipper_post_print_reporter_invoke.sh` — Simple shell wrapper to invoke the reporting script.
 - `gsheet_data_handler.gs` — Google Apps Script to append print data as a new row in a Google Sheet.
-
-### To-Do
-- Implement a PowerShell alternative to `slicer_gcode_post_processor.py` for users without Python or on Windows systems.
 
 ---
 
@@ -86,8 +84,15 @@ Place the following files in a suitable directory on your Klipper host (e.g., `/
 
 1. Open your slicer.
 2. Locate the printer settings or output options where you can specify a post-processing script.
-3. Add the full path to `slicer_gcode_post_processor.py` as a post-processing script.
-![Example of Post-processing script setup.](/img/slicer_post_processing_sample.png)
+3. Add the full path to Python/Powershell and `slicer_gcode_post_processor.py`/`slicer_gcode_post_processor.ps1` as a post-processing script.
+
+Python example
+![Example of Post-processing python script setup.](/img/slicer_post_processing_sample.png)
+
+Powershell example
+![Example of Post-processing powershell script setup.](/img/slicer_post_processing_sample_ps.png)
+
+
 ---
 
 ### 6. Update Klipper G-code Macro Config
@@ -162,12 +167,10 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 
 **Зроблено:**
 - `slicer_gcode_post_processor.py`: Python-скрипт для постобробки G-коду у слайсері, який вставляє команди звітності.
+- `slicer_gcode_post_processor.ps1` - PowerShell-скрипт постобробки для користувачів, які не мають Python або надають перевагу PowerShell на Windows.
 - `klipper_post_print_reporter.py`: Python-скрипт, який запускається на хості Klipper, відповідає за збір даних і надсилання їх у Google Таблицю.
 - `klipper_post_print_reporter_invoke.sh`: Простий shell-скрипт для виклику `klipper_post_print_reporter.py`.
 - `gsheet_data_handler.gs`: Google Apps Script для прийому даних з хоста Klipper і додавання нового рядка в зазначену Google Таблицю.
-
-**У планах:**
-- Налаштувати та описати запуск `slicer_gcode_post_processor.ps1` як PowerShell-скрипту постобробки для користувачів, які не мають Python або надають перевагу PowerShell.
 
 ---
 
@@ -212,8 +215,13 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 #### 5. Додайте скрипт постобробки у слайсер
 
 - Відкрийте налаштування вашого слайсера.
-- У розділі постобробки вкажіть повний шлях до `slicer_gcode_post_processor.py` як скрипт обробки після слайсингу.
-![Example of Post-processing script setup.](/img/slicer_post_processing_sample.png)
+- У розділі постобробки вкажіть шлях до Python/Powershell та `slicer_gcode_post_processor.py`/`slicer_gcode_post_processor.ps1` як скрипт обробки після слайсингу.
+
+Python приклад
+![Example of Post-processing python script setup.](/img/slicer_post_processing_sample.png)
+
+Powershell приклад
+![Example of Post-processing powershell script setup.](/img/slicer_post_processing_sample_ps.png)
 
 #### 6. Оновіть конфігурацію макросів у Klipper
 

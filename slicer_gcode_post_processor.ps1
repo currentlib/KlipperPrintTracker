@@ -131,13 +131,16 @@ try {
     Set-Content -Path $gcodeFilePath -Encoding UTF8 -Value $modifiedGcodeContent
     
     Write-Log -Level "INFO" -Message "Successfully processed $gcodeFilePath. Injected object counts."
+    Start-Sleep 5
 
 } catch [System.IO.FileNotFoundException] {
     Write-Log -Level "ERROR" -Message "Error: G-code file not found at '$gcodeFilePath'. Please check the path. Exception: $($_.Exception.Message)"
+    Start-Sleep 5
     exit 1
 } catch {
     # Catch any other unexpected errors
     Write-Log -Level "CRITICAL" -Message "An unexpected error occurred during post-processing for '$gcodeFilePath'. Exception: $($_.Exception.Message)"
+    Start-Sleep 5
     Write-Error $_.Exception.ToString()
     exit 1
 }
