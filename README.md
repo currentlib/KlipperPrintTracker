@@ -87,9 +87,11 @@ Place the following files in a suitable directory on your Klipper host (e.g., `/
 3. Add the full path to Python/Powershell and `slicer_gcode_post_processor.py`/`slicer_gcode_post_processor.ps1` as a post-processing script.
 
 Python example
+
 ![Example of Post-processing python script setup.](/img/slicer_post_processing_sample.png)
 
 Powershell example
+
 ![Example of Post-processing powershell script setup.](/img/slicer_post_processing_sample_ps.png)
 
 
@@ -218,9 +220,11 @@ Ensure they match your file locations and that the Web App URL is correctly conf
 - У розділі постобробки вкажіть шлях до Python/Powershell та `slicer_gcode_post_processor.py`/`slicer_gcode_post_processor.ps1` як скрипт обробки після слайсингу.
 
 Python приклад
+
 ![Example of Post-processing python script setup.](/img/slicer_post_processing_sample.png)
 
 Powershell приклад
+
 ![Example of Post-processing powershell script setup.](/img/slicer_post_processing_sample_ps.png)
 
 #### 6. Оновіть конфігурацію макросів у Klipper
