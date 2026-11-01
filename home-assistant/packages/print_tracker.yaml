@@ -1,0 +1,493 @@
+# =====================================================================
+#  Print Tracker - облік 3D-друку для Home Assistant (package)
+#  Частина проєкту KlipperPrintTracker, версія для Home Assistant.
+#  Нічого не треба ставити на принтер і в слайсер: HA сам питає Moonraker
+#  після кожного друку.
+#
+#  Вимоги:
+#    - Moonraker інтеграція (HACS) для принтера
+#    - "Exclude objects" увімкнено в слайсері (для підрахунку деталей)
+#    - необовʼязково: розумна розетка з лічильником енергії, Spoolman
+#      інтеграція, Companion app, Google Sheets інтеграція
+#
+#  Плейсхолдери (Find & Replace):
+#    PRINTER_IP                        IP принтера. Порт Moonraker 7125;
+#                                      на Creality K1/K1C/K1 Max можна
+#                                      також PRINTER_IP:4408 (через nginx)
+#    my_printer                        префікс сутностей Moonraker-інтеграції
+#                                      (sensor.my_printer_current_print_state)
+#    sensor.printer_plug_energy_total  загальний лічильник енергії розетки, kWh
+#    notify.mobile_app_YOUR_PHONE      notify-сервіс телефона
+#    GOOGLE_SHEETS_ENTRY_ID            config_entry інтеграції Google Sheets
+#
+#  Встановлення:
+#    1. configuration.yaml:
+#         homeassistant:
+#           packages: !include_dir_named packages
+#    2. Поклади файл у /config/packages/print_tracker.yaml
+#    3. Заміни плейсхолдери -> Check configuration -> Restart
+#    4. Встанови тариф і ціну пластику в хелперах "Print Tracker - ..."
+#
+#  Що збирається після кожного друку (complete / cancelled / error):
+#    - деталі: надруковані і виключені (exclude_object з Klipper)
+#    - файл, статус, тривалість, пластик (Moonraker history)
+#    - енергія за друк і її вартість
+#    - активна котушка Spoolman (через Moonraker) і вартість пластику
+#    - собівартість друку і однієї деталі
+#  Куди йде:
+#    - sensor.print_tracker (статистика, останні 15 друків, лічильники)
+#    - сповіщення на телефон з фото з камери
+#    - Google Sheets (перемикач input_boolean.print_tracker_gsheets)
+# =====================================================================
+
+# ---------------------------------------------------------------------
+#  Хелпери
+# ---------------------------------------------------------------------
+input_number:
+  print_tracker_start_energy:
+    name: Print Tracker - енергія на старті
+    icon: mdi:meter-electric-outline
+    min: 0
+    max: 1000000
+    step: 0.001
+    mode: box
+    unit_of_measurement: kWh
+
+  print_tracker_tariff:
+    name: Print Tracker - тариф
+    icon: mdi:cash
+    min: 0
+    max: 100
+    step: 0.01
+    mode: box
+    unit_of_measurement: грн/кВт·год
+
+  print_tracker_filament_price:
+    name: Print Tracker - ціна пластику
+    icon: mdi:printer-3d-nozzle
+    min: 0
+    max: 10000
+    step: 1
+    mode: box
+    unit_of_measurement: грн/кг
+
+input_boolean:
+  print_tracker_gsheets:
+    name: Print Tracker - писати в Google Sheets
+    icon: mdi:google-spreadsheet
+
+# ---------------------------------------------------------------------
+#  Запити до Moonraker
+# ---------------------------------------------------------------------
+rest_command:
+  print_tracker_objects:
+    url: "http://PRINTER_IP:7125/printer/objects/query?exclude_object"
+    method: GET
+    timeout: 10
+
+  print_tracker_last_job:
+    url: "http://PRINTER_IP:7125/server/history/list?limit=1&order=desc"
+    method: GET
+    timeout: 10
+
+# ---------------------------------------------------------------------
+#  Активна котушка: ID напряму з Moonraker (той, що ставить SET_ACTIVE_SPOOL)
+# ---------------------------------------------------------------------
+rest:
+  - resource: "http://PRINTER_IP:7125/server/spoolman/spool_id"
+    scan_interval: 60
+    timeout: 10
+    sensor:
+      - name: Printer Active Spool ID
+        unique_id: printer_active_spool_id
+        icon: mdi:identifier
+        value_template: "{{ value_json.result.spool_id | default('none', true) }}"
+
+# ---------------------------------------------------------------------
+#  Сенсори (trigger-based: стан і атрибути переживають перезапуск HA)
+# ---------------------------------------------------------------------
+template:
+  # Активна котушка. Памʼятає останню, навіть коли принтер вимкнений.
+  # Стан = залишок у грамах, атрибути = назва і entity котушки Spoolman.
+  - trigger:
+      - trigger: state
+        entity_id: sensor.printer_active_spool_id
+      - trigger: time_pattern
+        minutes: "/5"
+      - trigger: homeassistant
+        event: start
+    sensor:
+      - name: Printer Active Spool
+        unique_id: printer_active_spool
+        icon: mdi:printer-3d-nozzle
+        unit_of_measurement: g
+        state: >-
+          {%- set id = states('sensor.printer_active_spool_id') -%}
+          {%- set e = ('sensor.spoolman_spool_' ~ id) if id | is_number
+                      else this.attributes.get('spool_entity', '') -%}
+          {{- states(e) | float(none) if e else none -}}
+        attributes:
+          spool_entity: >-
+            {%- set id = states('sensor.printer_active_spool_id') -%}
+            {{- ('sensor.spoolman_spool_' ~ id) if id | is_number
+                else this.attributes.get('spool_entity', '') -}}
+          spool_name: >-
+            {%- set id = states('sensor.printer_active_spool_id') -%}
+            {%- set e = ('sensor.spoolman_spool_' ~ id) if id | is_number
+                        else this.attributes.get('spool_entity', '') -%}
+            {{- state_attr(e, 'friendly_name') or this.attributes.get('spool_name', 'Не вибрано') if e else 'Не вибрано' -}}
+
+  # Знімок обʼєктів під час друку. Запасний варіант, якщо після
+  # завершення Klipper вже скинув exclude_object.
+  - trigger:
+      - trigger: event
+        event_type: print_tracker_snapshot
+    sensor:
+      - name: Print Tracker Live
+        unique_id: print_tracker_live
+        icon: mdi:shape-outline
+        state: "{{ trigger.event.data.objects | count }}"
+        attributes:
+          objects: "{{ trigger.event.data.objects }}"
+          excluded: "{{ trigger.event.data.excluded }}"
+
+  # Історія і статистика
+  - trigger:
+      - trigger: event
+        event_type: print_tracker_job
+    sensor:
+      - name: Print Tracker
+        unique_id: print_tracker_history
+        icon: mdi:history
+        unit_of_measurement: друків
+        state: "{{ this.attributes.get('total_jobs', 0) | int + 1 }}"
+        attributes:
+          total_jobs: "{{ this.attributes.get('total_jobs', 0) | int + 1 }}"
+          completed: >-
+            {{ this.attributes.get('completed', 0) | int
+               + (1 if trigger.event.data.status == 'completed' else 0) }}
+          cancelled: >-
+            {{ this.attributes.get('cancelled', 0) | int
+               + (1 if trigger.event.data.status == 'cancelled' else 0) }}
+          failed: >-
+            {{ this.attributes.get('failed', 0) | int
+               + (1 if trigger.event.data.status == 'error' else 0) }}
+          success_rate: >-
+            {%- set t = this.attributes.get('total_jobs', 0) | int + 1 -%}
+            {%- set c = this.attributes.get('completed', 0) | int
+                + (1 if trigger.event.data.status == 'completed' else 0) -%}
+            {{- (100 * c / t) | round(1) -}}
+          total_parts: >-
+            {{ this.attributes.get('total_parts', 0) | int
+               + trigger.event.data.parts | int(0) }}
+          total_grams: >-
+            {{ (this.attributes.get('total_grams', 0) | float(0)
+               + trigger.event.data.grams | float(0)) | round(1) }}
+          total_kwh: >-
+            {{ (this.attributes.get('total_kwh', 0) | float(0)
+               + trigger.event.data.kwh | float(0)) | round(3) }}
+          total_cost: >-
+            {{ (this.attributes.get('total_cost', 0) | float(0)
+               + trigger.event.data.cost | float(0)) | round(2) }}
+          wasted_cost: >-
+            {{ (this.attributes.get('wasted_cost', 0) | float(0)
+               + (trigger.event.data.cost | float(0)
+                  if trigger.event.data.status != 'completed' else 0)) | round(2) }}
+          jobs: >-
+            {{ ([trigger.event.data.row]
+               + (this.attributes.get('jobs', []) | list))[:15] }}
+          object_totals: >-
+            {%- set ns = namespace(d=dict(this.attributes.get('object_totals', {}))) -%}
+            {%- for k, v in (trigger.event.data.printed or {}).items() -%}
+              {%- set ns.d = dict(ns.d, **{k: (ns.d.get(k, 0) | int) + (v | int)}) -%}
+            {%- endfor -%}
+            {{- ns.d -}}
+          excluded_totals: >-
+            {%- set ns = namespace(d=dict(this.attributes.get('excluded_totals', {}))) -%}
+            {%- for k, v in (trigger.event.data.excluded or {}).items() -%}
+              {%- set ns.d = dict(ns.d, **{k: (ns.d.get(k, 0) | int) + (v | int)}) -%}
+            {%- endfor -%}
+            {{- ns.d -}}
+
+# ---------------------------------------------------------------------
+#  Автоматизація
+# ---------------------------------------------------------------------
+automation:
+  - id: print_tracker
+    alias: Print Tracker
+    description: Збирає дані про кожен друк з Moonraker, рахує енергію і вартість
+    mode: queued
+    max: 10
+    triggers:
+      # Старт нового друку (не відновлення після паузи і не перезапуск HA)
+      - trigger: state
+        entity_id: sensor.my_printer_current_print_state
+        to: printing
+        not_from:
+          - paused
+          - unavailable
+          - unknown
+        id: start
+      # Знімок обʼєктів: через 30 с після старту і кожні 2 хв під час друку
+      - trigger: state
+        entity_id: sensor.my_printer_current_print_state
+        to: printing
+        for:
+          seconds: 30
+        id: snapshot
+      - trigger: time_pattern
+        minutes: "/2"
+        id: snapshot
+      # Кінець друку
+      - trigger: state
+        entity_id: sensor.my_printer_current_print_state
+        from:
+          - printing
+          - paused
+        to:
+          - complete
+          - cancelled
+          - error
+        id: finish
+
+    actions:
+      - choose:
+          # ---------------- СТАРТ ----------------
+          - conditions:
+              - condition: trigger
+                id: start
+            sequence:
+              - action: input_number.set_value
+                target:
+                  entity_id: input_number.print_tracker_start_energy
+                data:
+                  value: "{{ states('sensor.printer_plug_energy_total') | float(0) }}"
+              - event: print_tracker_snapshot
+                event_data:
+                  objects: []
+                  excluded: []
+
+          # ---------------- ЗНІМОК ПІД ЧАС ДРУКУ ----------------
+          - conditions:
+              - condition: trigger
+                id: snapshot
+              - condition: state
+                entity_id: sensor.my_printer_current_print_state
+                state:
+                  - printing
+                  - paused
+            sequence:
+              - action: rest_command.print_tracker_objects
+                response_variable: eo_resp
+                continue_on_error: true
+              - condition: template
+                value_template: >-
+                  {{ eo_resp is defined and eo_resp.status == 200
+                     and eo_resp.content.result.status.exclude_object.objects | count > 0 }}
+              - event: print_tracker_snapshot
+                event_data:
+                  objects: >-
+                    {{ eo_resp.content.result.status.exclude_object.objects
+                       | map(attribute='name') | list }}
+                  excluded: >-
+                    {{ eo_resp.content.result.status.exclude_object.excluded_objects | list }}
+
+          # ---------------- КІНЕЦЬ ДРУКУ ----------------
+          - conditions:
+              - condition: trigger
+                id: finish
+            sequence:
+              # Даємо Moonraker час записати job в історію
+              - delay:
+                  seconds: 5
+              - action: rest_command.print_tracker_objects
+                response_variable: eo_resp
+                continue_on_error: true
+              - action: rest_command.print_tracker_last_job
+                response_variable: job_resp
+                continue_on_error: true
+
+              # --- 1. Сирі дані ---
+              - variables:
+                  eo_ok: >-
+                    {{ eo_resp is defined and eo_resp.status == 200
+                       and eo_resp.content.result.status.exclude_object.objects | count > 0 }}
+                  job: >-
+                    {{ job_resp.content.result.jobs[0]
+                       if (job_resp is defined and job_resp.status == 200
+                           and job_resp.content.result.jobs | count > 0)
+                       else {} }}
+                  status: >-
+                    {%- set st = trigger.to_state.state -%}
+                    {{- 'completed' if st == 'complete' else ('cancelled' if st == 'cancelled' else 'error') -}}
+
+              # --- 2. Обʼєкти (з fallback на знімок під час друку) ---
+              - variables:
+                  objects: >-
+                    {{ (eo_resp.content.result.status.exclude_object.objects
+                        | map(attribute='name') | list)
+                       if eo_ok else (state_attr('sensor.print_tracker_live', 'objects') or []) }}
+                  excluded_raw: >-
+                    {{ (eo_resp.content.result.status.exclude_object.excluded_objects | list)
+                       if eo_ok else (state_attr('sensor.print_tracker_live', 'excluded') or []) }}
+
+              # --- 3. Підрахунок по деталях ---
+              # Назви на кшталт "Bracket.stl_id_0_copy_2" зводяться до "Bracket"
+              - variables:
+                  printed: >-
+                    {%- set ns = namespace(d={}) -%}
+                    {%- if status == 'completed' -%}
+                      {%- for o in objects if o not in excluded_raw -%}
+                        {%- set n = o | regex_replace('_id_\\d+_copy_\\d+$', '')
+                                      | regex_replace('\\.(stl|3mf|obj|step|stp)$', '', ignorecase=True) -%}
+                        {%- set ns.d = dict(ns.d, **{n: ns.d.get(n, 0) + 1}) -%}
+                      {%- endfor -%}
+                    {%- endif -%}
+                    {{- ns.d -}}
+                  excluded: >-
+                    {%- set ns = namespace(d={}) -%}
+                    {%- for o in excluded_raw -%}
+                      {%- set n = o | regex_replace('_id_\\d+_copy_\\d+$', '')
+                                    | regex_replace('\\.(stl|3mf|obj|step|stp)$', '', ignorecase=True) -%}
+                      {%- set ns.d = dict(ns.d, **{n: ns.d.get(n, 0) + 1}) -%}
+                    {%- endfor -%}
+                    {{- ns.d -}}
+                  planned: "{{ objects | count }}"
+
+              # --- 4. Файл, час, пластик, котушка, енергія ---
+              - variables:
+                  parts: "{{ printed.values() | sum }}"
+                  filename: >-
+                    {{ (job.get('filename') or states('sensor.my_printer_filename'))
+                       | regex_replace('\\.gcode$', '', ignorecase=True) }}
+                  minutes: "{{ ((job.get('print_duration', 0) | float(0)) / 60) | round(0) | int }}"
+                  grams: >-
+                    {%- set m = job.get('metadata', {}) or {} -%}
+                    {%- set wt = m.get('filament_weight_total', 0) | float(0) -%}
+                    {%- set ft = m.get('filament_total', 0) | float(0) -%}
+                    {%- set used = job.get('filament_used', 0) | float(0) -%}
+                    {{- ((wt * used / ft) if ft > 0 else (wt if status == 'completed' else 0)) | round(1) -}}
+                  # Котушка з Moonraker; запасний варіант - остання змінена
+                  # з наявних і непорожніх
+                  spool_entity: >-
+                    {%- set a = state_attr('sensor.printer_active_spool', 'spool_entity') -%}
+                    {%- if a and states(a) | is_number -%}
+                      {{- a -}}
+                    {%- else -%}
+                      {{- states.sensor
+                          | selectattr('entity_id', 'search', '^sensor\\.spoolman_spool_')
+                          | rejectattr('state', 'in', ['unavailable', 'unknown'])
+                          | selectattr('state', 'is_number')
+                          | rejectattr('state', 'eq', '0.0')
+                          | sort(attribute='last_changed', reverse=true)
+                          | map(attribute='entity_id') | first | default('') -}}
+                    {%- endif -%}
+                  kwh: >-
+                    {%- set e = states('sensor.printer_plug_energy_total') | float(-1) -%}
+                    {%- set s = states('input_number.print_tracker_start_energy') | float(0) -%}
+                    {{- ((e - s) if (e >= 0 and s > 0 and e >= s) else 0) | round(3) -}}
+
+              # --- 5. Гроші ---
+              - variables:
+                  spool: "{{ state_attr(spool_entity, 'friendly_name') if spool_entity else '' }}"
+                  price_kg: >-
+                    {%- set fp = state_attr(spool_entity, 'filament_price') | float(0) if spool_entity else 0 -%}
+                    {%- set fw = state_attr(spool_entity, 'filament_weight') | float(0) if spool_entity else 0 -%}
+                    {{- (fp / fw * 1000) | round(2) if (fp > 0 and fw > 0)
+                        else states('input_number.print_tracker_filament_price') | float(0) -}}
+                  tariff: "{{ states('input_number.print_tracker_tariff') | float(0) or 4.32 }}"
+              - variables:
+                  cost_energy: "{{ (kwh * tariff) | round(2) }}"
+                  cost_filament: "{{ (grams / 1000 * price_kg) | round(2) }}"
+              - variables:
+                  cost: "{{ (cost_energy + cost_filament) | round(2) }}"
+                  per_part: "{{ ((cost_energy + cost_filament) / parts) | round(2) if parts > 0 else 0 }}"
+                  excluded_names: "{{ excluded.keys() | list | join(', ') }}"
+
+              # --- 6. Рядок історії ---
+              - variables:
+                  row: >-
+                    {{ {
+                      'date': now().strftime('%d.%m %H:%M'),
+                      'file': filename,
+                      'status': status,
+                      'parts': parts,
+                      'planned': planned,
+                      'excluded': excluded_names,
+                      'minutes': minutes,
+                      'grams': grams,
+                      'kwh': kwh,
+                      'cost': cost,
+                      'per_part': per_part,
+                      'spool': spool
+                    } }}
+
+              # --- 7. Запис у сенсор історії ---
+              - event: print_tracker_job
+                event_data:
+                  status: "{{ status }}"
+                  row: "{{ row }}"
+                  printed: "{{ printed }}"
+                  excluded: "{{ excluded }}"
+                  parts: "{{ parts }}"
+                  grams: "{{ grams }}"
+                  kwh: "{{ kwh }}"
+                  cost: "{{ cost }}"
+
+              # --- 8. Сповіщення з фото ---
+              - action: notify.mobile_app_YOUR_PHONE
+                continue_on_error: true
+                data:
+                  title: >-
+                    {{ {'completed': '✅ Друк завершено',
+                        'cancelled': '⏹️ Друк скасовано',
+                        'error': '❌ Помилка друку'}[status] }}
+                  message: |-
+                    {%- set h = minutes // 60 -%}
+                    {%- set mm = minutes % 60 -%}
+                    {{ filename }}
+
+                    {% if status == 'completed' -%}
+                      {%- if planned > 0 and excluded_names -%}
+                    Надруковано {{ parts }} з {{ planned }} деталей, виключено: {{ excluded_names }}
+                      {%- elif parts > 0 -%}
+                    Надруковано {{ parts }} {{ 'деталь' if parts == 1 else ('деталі' if parts < 5 else 'деталей') }}
+                      {%- endif -%}
+                    {%- else -%}
+                    Зупинено через {{ h }} год {{ mm }} хв
+                    {%- endif %}
+
+                    ⏱️ {{ h }} год {{ mm }} хв · 🧵 {{ grams }} г · ⚡ {{ kwh }} кВт·год
+                    💸 {{ cost }} грн{% if per_part > 0 %} ({{ per_part }} грн/шт){% endif %}
+                  data:
+                    image: /api/camera_proxy/camera.my_printer_webcam
+                    tag: print_tracker
+
+              # --- 9. Google Sheets (вмикається перемикачем) ---
+              - if:
+                  - condition: state
+                    entity_id: input_boolean.print_tracker_gsheets
+                    state: "on"
+                then:
+                  - action: google_sheets.append_sheet
+                    continue_on_error: true
+                    data:
+                      config_entry: GOOGLE_SHEETS_ENTRY_ID
+                      worksheet: Друк HA
+                      data:
+                        Дата: "{{ now().strftime('%Y-%m-%d %H:%M') }}"
+                        Файл: "{{ filename }}"
+                        Статус: "{{ status }}"
+                        Деталей: "{{ parts }}"
+                        Заплановано: "{{ planned }}"
+                        Надруковано по деталях: >-
+                          {{ printed.items() | map('join', ' x') | join(', ') }}
+                        Виключено: "{{ excluded_names }}"
+                        Хвилин: "{{ minutes }}"
+                        Пластик г: "{{ grams }}"
+                        Котушка: "{{ spool }}"
+                        кВт·год: "{{ kwh }}"
+                        Електрика грн: "{{ cost_energy }}"
+                        Пластик грн: "{{ cost_filament }}"
+                        Всього грн: "{{ cost }}"
+                        Грн за деталь: "{{ per_part }}"

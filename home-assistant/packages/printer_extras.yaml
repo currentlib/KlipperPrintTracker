@@ -1,0 +1,135 @@
+# =====================================================================
+#  Printer Extras - додатки до Print Tracker (package, необовʼязковий)
+#    - script.printer_preheat / script.printer_cooldown
+#    - автоматизація: вимкнути кулери через 5 хв після друку
+#    - автоматизація: вимкнути розетку через 10 хв після друку,
+#      коли сопло охолоне нижче 50 °C
+#
+#  Плейсхолдери: my_printer, switch.printer_plug.
+#  Кулери: заміни number.my_printer_output_pin_fan* на свої output_pin
+#  сутності (на Creality K1/K1C це fan0, fan1, fan2).
+#  Поклади у /config/packages/printer_extras.yaml
+# =====================================================================
+
+script:
+  printer_preheat:
+    alias: Printer - Pre-heat
+    icon: mdi:fire
+    variables:
+      nozzle: 150
+      bed: 70
+    sequence:
+      - action: number.set_value
+        target:
+          entity_id: number.my_printer_extruder_target
+        data:
+          value: "{{ nozzle }}"
+      - action: number.set_value
+        target:
+          entity_id: number.my_printer_bed_target
+        data:
+          value: "{{ bed }}"
+
+  printer_cooldown:
+    alias: Printer - Cool down
+    icon: mdi:snowflake
+    sequence:
+      - action: number.set_value
+        target:
+          entity_id:
+            - number.my_printer_extruder_target
+            - number.my_printer_bed_target
+        data:
+          value: 0
+
+automation:
+  - id: printer_turn_off_fans
+    alias: Printer Turn Off Fans
+    description: >-
+      Вимикає кулери принтера через 5 хв після завершення, скасування або
+      помилки друку, щоб принтер не гудів.
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id: sensor.my_printer_current_print_state
+        from:
+          - printing
+          - paused
+        not_to:
+          - printing
+          - paused
+          - unavailable
+          - unknown
+    conditions: []
+    actions:
+      - delay:
+          minutes: 5
+      # Якщо за ці 5 хв почався новий друк - кулери не чіпаємо
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: sensor.my_printer_current_print_state
+            state:
+              - printing
+              - paused
+      - action: number.set_value
+        data:
+          value: 0
+        target:
+          entity_id:
+            - number.my_printer_output_pin_fan0
+            - number.my_printer_output_pin_fan1
+            - number.my_printer_output_pin_fan2
+
+  - id: printer_sleep
+    alias: Printer Sleep
+    description: >-
+      Вимикає розетку принтера через 10 хв після завершення, скасування або
+      помилки друку. Чекає, поки сопло охолоне нижче 50 °C, щоб не вимкнути
+      кулер хотенду на гарячому соплі.
+    mode: restart
+    triggers:
+      # Вихід з друку в будь-який "кінцевий" стан. Ловить і complete, і cancelled,
+      # і error, і випадок, коли прошивка одразу переводить принтер у standby.
+      - trigger: state
+        entity_id: sensor.my_printer_current_print_state
+        from:
+          - printing
+          - paused
+        not_to:
+          - printing
+          - paused
+          - unavailable
+          - unknown
+    conditions: []
+    actions:
+      - delay:
+          minutes: 10
+      # Якщо за ці 10 хв почався новий друк - нічого не робимо
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: sensor.my_printer_current_print_state
+            state:
+              - printing
+              - paused
+      # Чекаємо, поки сопло охолоне (максимум 20 хв)
+      - wait_template: >-
+          {{ states('sensor.my_printer_extruder_temperature') | float(0) < 50 }}
+        timeout:
+          minutes: 20
+        continue_on_timeout: true
+      # Ще раз перевіряємо, що друк не почався, поки чекали
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: sensor.my_printer_current_print_state
+            state:
+              - printing
+              - paused
+      - condition: state
+        entity_id: switch.printer_plug
+        state: "on"
+      - action: switch.turn_off
+        target:
+          entity_id: switch.printer_plug
