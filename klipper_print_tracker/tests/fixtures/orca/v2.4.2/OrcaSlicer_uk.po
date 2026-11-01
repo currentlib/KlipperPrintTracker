@@ -1,0 +1,352 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: orcaslicerua\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-06-26 11:35+0800\n"
+"PO-Revision-Date: 2025-03-07 09:30+0200\n"
+"Last-Translator: \n"
+"Language-Team: Ukrainian\n"
+"Language: uk_UA\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=((n%10==1 && n%100!=11) ? 0 : ((n%10 >= 2 "
+"&& n%10 <=4 && (n%100 < 12 || n%100 > 14)) ? 1 : ((n%10 == 0 || (n%10 >= 5 "
+"&& n%10 <=9)) || (n%100 >= 11 && n%100 <= 14)) ? 2 : 3));\n"
+"X-Crowdin-File: OrcaSlicer.pot\n"
+"X-Crowdin-File-ID: 13\n"
+"X-Crowdin-Language: uk\n"
+"X-Crowdin-Project: orcaslicerua\n"
+"X-Crowdin-Project-ID: 748805\n"
+"X-Generator: Poedit 3.5\n"
+
+msgid "mm"
+msgstr "мм"
+
+msgid "Position"
+msgstr "Позиція"
+
+msgid "Advanced"
+msgstr "Розширені"
+
+msgid "Filament"
+msgstr "Філамент"
+
+msgid "Quality"
+msgstr "Якість"
+
+msgid "Infill"
+msgstr "Заповнення"
+
+msgid "Support"
+msgstr "Підтримки"
+
+msgid "Flush options"
+msgstr "Параметри промивки"
+
+msgid "Speed"
+msgstr "Швидкість"
+
+msgid "Strength"
+msgstr "Міцність"
+
+msgid "Ironing"
+msgstr "Розгладжування"
+
+msgid "Fuzzy Skin"
+msgstr "Шорстка Поверхня"
+
+msgid "Layer height"
+msgstr "Висота шару"
+
+msgid "Wall loops"
+msgstr "Кількість стінок"
+
+msgid "Brim"
+msgstr "Кайма"
+
+msgid "Cooling"
+msgstr "Охолодження"
+
+msgid "Nozzle temperature"
+msgstr "Температура сопла"
+
+msgid "Bed temperature"
+msgstr "Температура столу"
+
+msgid "Acceleration"
+msgstr "Прискорення"
+
+msgid "Seam"
+msgstr "Шов"
+
+msgid "Outer wall"
+msgstr "Зовнішня стінка"
+
+msgid "Skirt"
+msgstr "Спідниця"
+
+msgid "Prime tower"
+msgstr "Підготовча вежа"
+
+msgid "mm/s"
+msgstr "мм/с"
+
+msgid "Overhangs"
+msgstr "Нависання"
+
+msgid "Flow ratio"
+msgstr "Коефіцієнт потоку"
+
+msgid "Retraction"
+msgstr "Втягування"
+
+msgid "Others"
+msgstr "Інші"
+
+msgid "Line width"
+msgstr "Ширина лінії"
+
+msgid "Precision"
+msgstr "Точність"
+
+msgid "Z contouring"
+msgstr ""
+
+msgid "Wall generator"
+msgstr "Генерація стінок"
+
+msgid "Walls and surfaces"
+msgstr "Стінки та поверхні"
+
+msgid "Bridging"
+msgstr "Створення мостів"
+
+msgid "Walls"
+msgstr "Стінки"
+
+msgid "Top/bottom shells"
+msgstr "Верхня/нижня оболонка"
+
+msgid "First layer speed"
+msgstr "Швидкість першого шару"
+
+msgid "Other layers speed"
+msgstr "Швидкість інших шарів"
+
+msgid "Overhang speed"
+msgstr "Швидкість нависань"
+
+msgid "Travel speed"
+msgstr "Швидкість переміщення"
+
+msgid "Junction Deviation"
+msgstr ""
+
+msgid "Jerk(XY)"
+msgstr "Ривок (XY)"
+
+msgid "Raft"
+msgstr "Підкладка"
+
+msgid "Support filament"
+msgstr "Філамент підтримки"
+
+msgid "Support ironing"
+msgstr ""
+
+msgid "Tree supports"
+msgstr "Органічні підтримки"
+
+msgid "Multimaterial"
+msgstr "Мультиматеріал"
+
+msgid "Filament for Features"
+msgstr "Філамент для ознак"
+
+msgid "Ooze prevention"
+msgstr "Запобігання просочування"
+
+msgid "Special mode"
+msgstr "Спеціальний режим"
+
+msgid "G-code output"
+msgstr "Вихідний G-code"
+
+msgid "Change extrusion role G-code"
+msgstr "Змінити роль екструзії G-код"
+
+msgid "Post-processing Scripts"
+msgstr "Сценарії постобробки"
+
+msgid "Notes"
+msgstr "Примітки"
+
+msgid "Basic information"
+msgstr "Базова інформація"
+
+msgid "Flow ratio and Pressure Advance"
+msgstr "Коефіцієнт потоку та Випередження тиску"
+
+msgid "Print chamber temperature"
+msgstr "Температура в камері друку"
+
+msgid "Print temperature"
+msgstr "Температура друку"
+
+msgid "Volumetric speed limitation"
+msgstr "Об'ємне обмеження швидкості"
+
+msgid "Cooling for specific layer"
+msgstr "Охолодження для конкретного шару"
+
+msgid "Part cooling fan"
+msgstr "Вентилятор охолодження деталей"
+
+msgid "Auxiliary part cooling fan"
+msgstr "Вентилятор охолодження допоміжних деталей"
+
+msgid "Exhaust fan"
+msgstr "Витяжний вентилятор"
+
+msgid "Filament start G-code"
+msgstr "G-код початку філаменту"
+
+msgid "Filament end G-code"
+msgstr "G-код кінця філаменту"
+
+msgid "Wipe tower parameters"
+msgstr "Параметри вежі протирання"
+
+msgid "Multi Filament"
+msgstr ""
+
+msgid "Tool change parameters with single extruder MM printers"
+msgstr "Параметри зміни інструменту в одно-екструдерному ММ-принтері"
+
+msgid "Tool change parameters with multi extruder MM printers"
+msgstr "Параметри заміни інструменту в багатоекструдерних MM-принтерах"
+
+msgid "Dependencies"
+msgstr "Залежності"
+
+msgid "Compatible printers"
+msgstr "Сумісні принтери"
+
+msgid "Compatible process profiles"
+msgstr "Сумісні профілі процесів"
+
+msgid "Printable space"
+msgstr "Місце для друку"
+
+msgid "Cooling Fan"
+msgstr "Охолоджуючий вентилятор"
+
+msgid "Extruder Clearance"
+msgstr "Очищення екструдера"
+
+msgid "Adaptive bed mesh"
+msgstr "Адаптивна сітка стола"
+
+msgid "Accessory"
+msgstr "Аксесуари"
+
+msgid "Machine G-code"
+msgstr "G-code машини"
+
+msgid "File header G-code"
+msgstr ""
+
+msgid "Machine start G-code"
+msgstr "Стартовий G-code"
+
+msgid "Machine end G-code"
+msgstr "Кінцевий G-code"
+
+msgid "Printing by object G-code"
+msgstr "G-коду друку кожного об'єкту окремо"
+
+msgid "Before layer change G-code"
+msgstr "G-code перед зміною шару"
+
+msgid "Layer change G-code"
+msgstr "G-code Зміни шару"
+
+msgid "Timelapse G-code"
+msgstr "G-код для часової зйомки"
+
+msgid "Clumping Detection G-code"
+msgstr ""
+
+msgid "Change filament G-code"
+msgstr "G-code Зміни філаменту"
+
+msgid "Pause G-code"
+msgstr "G-code Паузи"
+
+msgid "Template Custom G-code"
+msgstr "Шаблон G-code користувача"
+
+msgid "Single extruder multi-material setup"
+msgstr "Установка для роботи з декількома матеріалами на одному екструдері"
+
+msgid "Nozzle diameter"
+msgstr "Діаметр сопла"
+
+msgid "Wipe tower"
+msgstr "Вежа протирання"
+
+msgid "Single extruder multi-material parameters"
+msgstr "Параметри екструдеру в багато-екструдерному принтері"
+
+msgid "Layer height limits"
+msgstr "Обмеження висоти шару"
+
+msgid "Z-Hop"
+msgstr "Стрибок-Z"
+
+msgid "Retraction when switching material"
+msgstr "Втягування під час зміни матеріалу"
+
+msgid "Back"
+msgstr "Ззаду"
+
+msgid "Other layers"
+msgstr "Інші шари"
+
+msgid "Sparse infill density"
+msgstr "Щільність часткового заповнення"
+
+msgid "First layer height"
+msgstr "Висота першого шару"
+
+msgid "%"
+msgstr "%"
+
+msgid "The diameter of nozzle."
+msgstr "Діаметр сопла"
+
+msgid "Number of walls of every layer."
+msgstr "Кількість стінок кожного шару"
+
+msgid "Seam position"
+msgstr "Розташування шва"
+
+msgid "The start position to print each part of outer wall."
+msgstr "Початкове положення для друку кожної частини зовнішнього периметра"
+
+msgid "Nearest"
+msgstr "Найближче"
+
+msgid "Aligned"
+msgstr "Вирівняне"
+
+msgid "Aligned back"
+msgstr ""
+
+msgid "Random"
+msgstr "Випадкове"
+
+msgid "Nozzle temperature for layers after the initial one."
+msgstr "Температура сопла для шарів після першого"
