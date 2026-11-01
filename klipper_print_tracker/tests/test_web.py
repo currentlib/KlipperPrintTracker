@@ -186,7 +186,7 @@ async def test_everything_resolves_under_the_ingress_prefix(client):
     headers = {"X-Ingress-Path": PREFIX.rstrip("/")}
     page = await (await client.get("/", headers=headers)).text()
     assets = re.findall(r'(?:src|href)="([^"]+)"', page)
-    assert len(assets) == 3
+    assert len(assets) >= 4
     for asset in assets:
         url = urljoin(PREFIX, asset)
         assert url.startswith(PREFIX)
@@ -203,7 +203,7 @@ async def test_everything_resolves_under_the_ingress_prefix(client):
 
 
 def test_frontend_has_no_absolute_urls():
-    for name in ("index.html", "app.js", "style.css"):
+    for name in sorted(p.name for p in STATIC.iterdir() if p.suffix in (".html", ".js", ".css")):
         text = (STATIC / name).read_text(encoding="utf-8")
         assert not re.search(r"""(?:src|href|fetch\(|url\()\s*=?\s*["'`(]/""", text), name
         assert "http://" not in text and "https://" not in text
