@@ -21,6 +21,9 @@ class FakeSupervisor:
     async def energy(self, entity):
         return self.value
 
+    async def fire_event(self, event_type, data):
+        return True
+
 
 class Listener:
     def __init__(self):

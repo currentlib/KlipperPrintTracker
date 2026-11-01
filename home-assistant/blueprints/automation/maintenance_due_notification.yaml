@@ -1,0 +1,52 @@
+blueprint:
+  name: Print Tracker - maintenance due
+  description: >-
+    Phone notification when a Print Tracker maintenance task becomes due. The add-on waits for
+    the end of a print before it announces a task.
+  domain: automation
+  source_url: https://github.com/currentlib/KlipperPrintTracker/blob/main/home-assistant/blueprints/automation/maintenance_due_notification.yaml
+  input:
+    notify_device:
+      name: Device to notify
+      description: A phone with the Home Assistant Companion app.
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+    printer_filter:
+      name: Printer
+      description: Only this printer id, for example printer1. Leave empty for all printers.
+      default: ""
+      selector:
+        text:
+
+mode: queued
+max: 20
+
+triggers:
+  - trigger: event
+    event_type: klipper_print_tracker_maintenance_due
+
+variables:
+  printer_filter: !input printer_filter
+  task: "{{ trigger.event.data }}"
+  action_prefix: "KPT_{{ task.printer_id }}_maint-{{ task.task_id }}_"
+
+conditions:
+  - condition: template
+    value_template: "{{ not printer_filter or task.printer_id == printer_filter }}"
+
+# The add-on reads the replies from the event bus, no other automation is needed.
+actions:
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: 🔧 Час на обслуговування
+    message: "{{ task.name }}{{ ('\n' ~ task.note) if task.note else '' }}"
+    data:
+      tag: "print_tracker_maint_{{ task.task_id }}"
+      actions:
+        - action: "{{ action_prefix }}done"
+          title: Виконано
+        - action: "{{ action_prefix }}snooze"
+          title: Нагадати через 10 год

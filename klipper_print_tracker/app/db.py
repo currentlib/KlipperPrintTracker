@@ -99,7 +99,17 @@ def migrate_v3_results(conn):
                          (material, printer_id, job_id))
 
 
-MIGRATIONS = [migrate_v2_printers, migrate_v3_results]
+def migrate_v4_maintenance(conn):
+    conn.execute("""CREATE TABLE maintenance_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, printer_id TEXT NOT NULL, position INTEGER, name TEXT NOT NULL,
+        note TEXT DEFAULT '', hours REAL, days REAL, grams REAL, prints INTEGER, abrasive_grams REAL,
+        material_pattern TEXT, enabled INTEGER DEFAULT 1, last_done_at REAL NOT NULL, confirmed INTEGER DEFAULT 0,
+        notified_at REAL, snooze_until_hours REAL)""")
+    conn.execute("""CREATE TABLE maintenance_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER, printer_id TEXT NOT NULL, done_at REAL, note TEXT, name TEXT)""")
+
+
+MIGRATIONS = [migrate_v2_printers, migrate_v3_results, migrate_v4_maintenance]
 
 
 class Database:

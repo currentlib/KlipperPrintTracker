@@ -8,7 +8,9 @@ from aiohttp import web
 
 from .config import DATA_DIR, load_options
 from .db import Database
+from .housekeeping import Housekeeping
 from .links import Links
+from .maintenance import Maintenance
 from .moonraker import Moonraker
 from .ratings import HomeAssistantEvents, Ratings
 from .mqtt import MqttPublisher
@@ -33,6 +35,7 @@ class Services:
     links: Links
     thumbs: object
     ratings: Ratings
+    maintenance: Maintenance
     mqtt: MqttPublisher | None = None
 
 
@@ -86,17 +89,33 @@ async def main():
         sheets = GoogleSheets(options, supervisor, links)
         for tracker in trackers.values():
             tracker.listeners = [mqtt, sheets]
+        maintenance = Maintenance(db, options, supervisor)
+        maintenance.listeners.append(mqtt)
+        maintenance.busy = lambda printer_id: bool(trackers[printer_id].active)
+        for printer in options.printers:
+            maintenance.ensure_defaults(printer.id)
+        for tracker in trackers.values():
+            tracker.listeners.append(maintenance)
+
+        async def check_maintenance():
+            for printer in options.printers:
+                await maintenance.check(printer.id)
+            await mqtt.publish_states()
+
+        housekeeping = Housekeeping(DATA_DIR, options, db, [check_maintenance])
+        mqtt.providers.extend([maintenance, housekeeping])
         ratings = Ratings(db, [mqtt])
         events = HomeAssistantEvents(session, supervisor.token)
-        events.handlers.append(ratings.from_action)
+        events.handlers.extend([ratings.from_action, maintenance.from_action])
         events.handlers.extend(tracker.on_action for tracker in trackers.values())
-        services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", ratings, mqtt)
+        services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", ratings, maintenance, mqtt)
 
         runners = [await serve(create_app(services), INGRESS_PORT),
                    await serve(create_app(services, ingress=False), DIRECT_PORT)]
         log.info("Print Tracker started, panel at %s", links.panel())
         try:
-            jobs = [keep_running("MQTT", mqtt.run), keep_running("HA events", events.run)]
+            jobs = [keep_running("MQTT", mqtt.run), keep_running("HA events", events.run),
+                    keep_running("Housekeeping", housekeeping.run)]
             for printer_id, tracker in trackers.items():
                 jobs.append(keep_running(f"Moonraker {printer_id}", tracker.moonraker.run))
                 jobs.append(keep_running(f"Reconcile {printer_id}", tracker.run_reconcile))

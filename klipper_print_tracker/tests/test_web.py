@@ -10,6 +10,7 @@ from app import web as web_module
 from app.config import Options
 from app.db import Database
 from app.links import Links
+from app.maintenance import Maintenance
 from app.ratings import Ratings
 from app.settings_git import SettingsHistory
 from app.slicer_meta import LayoutStore
@@ -68,7 +69,8 @@ async def services(tmp_path):
     tracker = Tracker()
     tracker.moonraker, tracker.printer = moonraker, NoMoonraker.printer
     yield SimpleNamespace(options=Options(currency="UAH"), db=db, trackers={"printer1": tracker},
-                          layouts=layouts, links=links, thumbs=tmp_path / "thumbs", mqtt=None, ratings=Ratings(db))
+                          layouts=layouts, links=links, thumbs=tmp_path / "thumbs", mqtt=None, ratings=Ratings(db),
+                          maintenance=Maintenance(db, Options()))
     db.close()
 
 
@@ -269,3 +271,23 @@ async def test_preset_timeline_has_results_per_value(client, services):
     row = data["timeline"][1]["diff"][0]
     assert row["key"] == "outer_wall_speed" and row["new"]["raw"] == "180"
     assert row["results"] == {"good": 1, "bad": 0, "tags": {}}
+
+
+async def test_maintenance_api(client, services):
+    data = await (await client.get("/api/maintenance")).json()
+    printer = data["printers"][0]
+    assert printer["id"] == "printer1" and len(printer["tasks"]) == 12 and printer["needs_setup"]
+    task = printer["tasks"][0]["id"]
+    assert (await client.post("/api/maintenance/printer1/confirm", json={"dates": {str(task): "2026-01-01"}})).status == 200
+    assert not (await (await client.get("/api/maintenance")).json())["printers"][0]["needs_setup"]
+    assert (await client.post(f"/api/maintenance/task/{task}/done", json={"note": "x"})).status == 200
+    assert (await client.post(f"/api/maintenance/task/{task}", json={"hours": 5})).status == 200
+    assert services.maintenance.task(task)["hours"] == 5
+    assert (await client.post("/api/maintenance/task/99999/done", json={})).status == 404
+    created = await (await client.post("/api/maintenance/printer1", json={"name": "Нове", "days": 3})).json()
+    assert (await client.delete(f"/api/maintenance/task/{created['id']}")).status == 200
+
+
+async def test_direct_port_cant_delete(services):
+    async with TestClient(TestServer(create_app(services, ingress=False))) as test_client:
+        assert (await test_client.delete("/api/maintenance/task/1")).status == 403

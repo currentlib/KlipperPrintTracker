@@ -30,6 +30,8 @@ options:
   auto_fetch_layouts: true
   spool_margin_percent: 5
   spool_check_auto_pause: false
+  abrasive_patterns: CF|GF|glow
+  thumbnail_retention_days: 365
   log_level: info
 schema:
   printers:
@@ -53,4 +55,6 @@ schema:
   auto_fetch_layouts: bool
   spool_margin_percent: float(0,)
   spool_check_auto_pause: bool
+  abrasive_patterns: str?
+  thumbnail_retention_days: int(0,)
   log_level: list(debug|info|warning|error)

@@ -60,6 +60,12 @@ def create_app(services, ingress: bool = True, allowed_peer: str | None = INGRES
         web.get("/api/part/{name}", part),
         web.get("/api/preset/{kind}/{name}", preset),
         web.post("/api/reconcile", reconcile),
+        web.get("/api/maintenance", maintenance),
+        web.post("/api/maintenance/{printer}", add_task),
+        web.post("/api/maintenance/{printer}/confirm", confirm_tasks),
+        web.post("/api/maintenance/task/{task}", edit_task),
+        web.post("/api/maintenance/task/{task}/done", task_done),
+        web.delete("/api/maintenance/task/{task}", delete_task),
         web.post("/api/job/{job_id}/rating", rate),
         web.get("/api/tags", tags),
         web.post("/api/tags", save_tags),
@@ -287,6 +293,71 @@ async def rate(request):
         raise web.HTTPBadRequest(text="Bad failure reason")
     updated = await _services(request).ratings.update(record["printer_id"], record["job_id"], **fields)
     return web.json_response(_row(updated, _services(request).links))
+
+
+async def maintenance(request):
+    s = _services(request)
+    wanted = request.query.get("printer")
+    result = []
+    for tracker in s.trackers.values():
+        printer = tracker.printer
+        if wanted and printer.id != wanted:
+            continue
+        s.maintenance.ensure_defaults(printer.id)
+        tasks = s.maintenance.tasks(printer.id)
+        result.append({"id": printer.id, "name": printer.name, "tasks": tasks, "log": s.maintenance.log(printer.id),
+                       "needs_setup": any(not t["confirmed"] for t in tasks)})
+    return web.json_response({"printers": result})
+
+
+def _task_id(request) -> int:
+    try:
+        return int(request.match_info["task"])
+    except ValueError as err:
+        raise web.HTTPNotFound() from err
+
+
+async def _after_task_change(s):
+    if s.mqtt and s.mqtt.client:
+        await s.mqtt.publish_all()
+
+
+async def add_task(request):
+    s = _services(request)
+    task_id = s.maintenance.save(request.match_info["printer"], await _body(request))
+    await _after_task_change(s)
+    return web.json_response({"id": task_id})
+
+
+async def edit_task(request):
+    s = _services(request)
+    task = s.maintenance.task(_task_id(request))
+    if task is None:
+        raise web.HTTPNotFound()
+    s.maintenance.save(task["printer_id"], await _body(request), task["id"])
+    await _after_task_change(s)
+    return web.json_response({"id": task["id"]})
+
+
+async def task_done(request):
+    s = _services(request)
+    if not await s.maintenance.done(_task_id(request), (await _body(request)).get("note", "")):
+        raise web.HTTPNotFound()
+    return web.json_response({"ok": True})
+
+
+async def delete_task(request):
+    s = _services(request)
+    s.maintenance.delete(_task_id(request))
+    await _after_task_change(s)
+    return web.json_response({"ok": True})
+
+
+async def confirm_tasks(request):
+    s = _services(request)
+    dates = (await _body(request)).get("dates") or {}
+    s.maintenance.confirm(request.match_info["printer"], {k: _date(v) for k, v in dates.items() if v})
+    return web.json_response({"ok": True})
 
 
 async def tags(request):

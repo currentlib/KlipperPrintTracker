@@ -1,7 +1,15 @@
 // All UI text lives here, add a file like this one for another language.
 window.S = {
   app_title: "Print Tracker", printer: "Принтер", all_printers: "Усі принтери",
-  nav_home: "Головна", nav_prints: "Друки", back: "Назад",
+  nav_home: "Головна", nav_prints: "Друки", nav_maintenance: "Обслуговування", back: "Назад",
+  maintenance: "Обслуговування", maint_due: "Час виконати", maint_left: (value, unit) => `Залишилось ${value} ${unit}`,
+  maint_over: (value, unit) => `Прострочено на ${value} ${unit}`, maint_snoozed: "Відкладено", maint_done: "Виконано",
+  maint_disabled: "Вимкнено", maint_history: "Журнал", maint_edit: "Змінити", maint_add: "Додати завдання", maint_delete: "Видалити",
+  maint_setup: "Коли ці роботи виконувались востаннє? Якщо не знаєте, лишіть сьогоднішню дату.", maint_confirm: "Підтвердити",
+  maint_name: "Назва", maint_note: "Примітка", maint_hours: "Години друку", maint_days: "Дні", maint_grams: "Пластик, г",
+  maint_prints: "Кількість друків", maint_abrasive: "Абразивний пластик, г", maint_material: "Лише матеріали (шаблон)",
+  maint_enabled: "Увімкнено", maint_empty: "Завдань немає", maint_note_hint: "Примітка, необовʼязково",
+
   error: "Не вдалося завантажити дані", all_prints: "Усі друки",
   unit_g: "г", unit_kg: "кг", unit_mm: "мм", unit_kwh: "кВт·год", unit_hours: "год", unit_minutes: "хв",
 

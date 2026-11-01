@@ -33,7 +33,7 @@ function printerSwitch() {
 }
 
 function setToolbar({ title = S.app_title, back = false, tab = "", actions = "" }) {
-  const tabs = [["#/", S.nav_home, "home"], ["#/prints", S.nav_prints, "prints"]]
+  const tabs = [["#/", S.nav_home, "home"], ["#/prints", S.nav_prints, "prints"], ["#/maintenance", S.nav_maintenance, "maintenance"]]
     .map(([href, label, id]) => `<a href="${href}" class="${id === tab ? "on" : ""}">${label}</a>`).join("");
   toolbarElement.innerHTML = `
     ${back ? `<a class="icon-button" href="#/prints" title="${S.back}" aria-label="${S.back}">${icon("arrow-left")}</a>` : ""}
@@ -391,6 +391,64 @@ async function presetPage(kind, name) {
     + section(`${heading("history", S.preset_history)}${d.timeline.map(entry).join("")}`, "span-all");
 }
 
+// --- maintenance ---------------------------------------------------------
+
+const post = (path, body) => fetch(`api/${path}`, {
+  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+});
+
+function taskState(t) {
+  if (!t.enabled) return S.maint_disabled;
+  if (t.snoozed) return S.maint_snoozed;
+  const worst = t.worst;
+  if (!worst) return "";
+  return worst.remaining < 0 ? S.maint_over(UI.number(-worst.remaining, 0), worst.unit)
+    : S.maint_left(UI.number(worst.remaining, 0), worst.unit);
+}
+
+function taskForm(t) {
+  const input = (name, label, value, type = "number") => `<label class="form-field">${label}
+    <input class="field" name="${name}" type="${type}" value="${e(value ?? "")}"></label>`;
+  return `<details class="manage"><summary>${S.maint_edit}</summary><form class="task-form" data-task="${t.id}">
+    ${input("name", S.maint_name, t.name, "text")}${input("note", S.maint_note, t.note, "text")}
+    ${input("hours", S.maint_hours, t.hours)}${input("days", S.maint_days, t.days)}${input("grams", S.maint_grams, t.grams)}
+    ${input("prints", S.maint_prints, t.prints)}${input("abrasive_grams", S.maint_abrasive, t.abrasive_grams)}
+    ${input("material_pattern", S.maint_material, t.material_pattern, "text")}
+    <label class="form-check"><input type="checkbox" name="enabled"${t.enabled ? " checked" : ""}>${S.maint_enabled}</label>
+    <div class="form-actions"><button class="text-button">${S.save}</button>
+    <button type="button" class="text-button danger" data-delete-task="${t.id}">${S.maint_delete}</button></div></form></details>`;
+}
+
+function taskCard(t) {
+  const variable = t.due ? "--error-color" : t.percent_used >= 80 ? "--warning-color" : "--success-color";
+  return card(`<div class="task">
+    <div class="tile-row">${tile({ name: t.name, state: taskState(t), iconName: t.due ? "alert" : "wrench", variable })}
+      <button class="text-button" data-done="${t.id}">${S.maint_done}</button></div>
+    <span class="bar" style="--c:var(${variable})"><i style="width:${Math.min(100, t.percent_used)}%"></i></span>
+    ${t.note ? `<div class="muted small">${e(t.note)}</div>` : ""}${taskForm(t)}</div>`);
+}
+
+function setupCard(p) {
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = p.tasks.map((t) => `<label class="setup-row"><span>${e(t.name)}</span>
+    <input class="field" type="date" name="${t.id}" max="${today}" value="${today}"></label>`).join("");
+  return card(`<form class="card-body setup" data-setup="${e(p.id)}"><p>${S.maint_setup}</p>${rows}
+    <div class="form-actions"><button class="text-button">${S.maint_confirm}</button></div></form>`);
+}
+
+async function maintenancePage() {
+  setToolbar({ tab: "maintenance", title: S.maintenance });
+  const d = await api(scoped("maintenance"));
+  return d.printers.map((p) => {
+    const log = p.log.map((l) => `<div class="list-row"><span class="ellipsis">${e(l.name)}${l.note ? ` · ${e(l.note)}` : ""}</span>
+      <span class="muted">${e(UI.date(l.done_at))}</span></div>`).join("");
+    return section(`${heading("wrench", d.printers.length > 1 ? p.name : S.maintenance, `<a href="#" data-add-task="${e(p.id)}">${S.maint_add}</a>`)}
+      ${p.needs_setup ? setupCard(p) : ""}
+      <div class="task-grid">${p.tasks.map(taskCard).join("") || card(empty("wrench", S.maint_empty))}</div>
+      ${log ? `${heading("history", S.maint_history)}${card(log)}` : ""}`, "span-all");
+  }).join("");
+}
+
 // --- router --------------------------------------------------------------
 
 const skeletonTiles = (count) => `<div class="tiles">${Array.from({ length: count }, UI.skeletonTile).join("")}</div>`;
@@ -412,6 +470,7 @@ async function render() {
   try {
     if (page === "job") html = await jobPage(args[0]);
     else if (page === "prints") html = await prints();
+    else if (page === "maintenance") html = await maintenancePage();
     else if (page === "compare") html = await comparePage(args[0], args[1]);
     else if (page === "part") html = await partPage(args.join("/"));
     else if (page === "preset") html = await presetPage(args[0], args.slice(1).join("/"));
@@ -427,6 +486,15 @@ async function saveRating(block, fields) {
 }
 
 document.addEventListener("click", async (event) => {
+  const action = event.target.closest("[data-done], [data-delete-task], [data-add-task]");
+  if (action) {
+    event.preventDefault();
+    if (action.dataset.done) await post(`maintenance/task/${action.dataset.done}/done`, {});
+    else if (action.dataset.deleteTask) await fetch(`api/maintenance/task/${action.dataset.deleteTask}`, { method: "DELETE" });
+    else await post(`maintenance/${enc(action.dataset.addTask)}`, { name: S.maint_add, hours: 100 });
+    render();
+    return;
+  }
   const rater = event.target.closest("[data-rate], [data-issue]");
   if (rater) {
     const block = rater.closest(".rating");
@@ -499,7 +567,25 @@ document.addEventListener("change", (event) => {
   }
 });
 
-document.addEventListener("submit", (event) => {
+document.addEventListener("submit", async (event) => {
+  const form = event.target;
+  if (form.dataset.task) {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(form));
+    const numbers = ["hours", "days", "grams", "prints", "abrasive_grams"];
+    for (const key of numbers) data[key] = data[key] === "" ? null : Number(data[key]);
+    data.material_pattern = data.material_pattern || null;
+    data.enabled = form.elements.enabled.checked ? 1 : 0;
+    await post(`maintenance/task/${form.dataset.task}`, data);
+    render();
+    return;
+  }
+  if (form.dataset.setup) {
+    event.preventDefault();
+    await post(`maintenance/${enc(form.dataset.setup)}/confirm`, { dates: Object.fromEntries(new FormData(form)) });
+    render();
+    return;
+  }
   if (event.target.id !== "search") return;
   event.preventDefault();
   location.hash = listHref({ file: event.target.elements.file.value.trim() });

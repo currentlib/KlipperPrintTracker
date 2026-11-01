@@ -63,6 +63,12 @@ configuration:
   spool_check_auto_pause:
     name: Pause on a spool problem
     description: Pause automatically when the filament isn't enough or the material differs.
+  abrasive_patterns:
+    name: Abrasive filament patterns
+    description: Regular expression matched against the material and the spool name.
+  thumbnail_retention_days:
+    name: Keep thumbnails, days
+    description: Older pictures are removed, the print records stay. 0 keeps them all.
   log_level:
     name: Log level
     description: How much detail to write to the log.

@@ -84,7 +84,7 @@ def entity(scope: Scope, component: str, key: str, payload: dict) -> tuple[str, 
     return f"{PREFIX}/{component}/{unique_id}/config", body
 
 
-def scope_discovery(scope: Scope, options) -> dict[str, dict]:
+def scope_discovery(scope: Scope, options, providers=()) -> dict[str, dict]:
     entities = {}
 
     def add(component, key, payload):
@@ -118,14 +118,17 @@ def scope_discovery(scope: Scope, options) -> dict[str, dict]:
         if body.pop("attributes", False):
             body["json_attributes_topic"] = body["state_topic"]
         add(component, key, body)
+    for provider in providers:
+        for component, key, payload in provider.entities(scope):
+            add(component, key, payload)
     return entities
 
 
-def discovery(options) -> dict[str, dict]:
+def discovery(options, providers=()) -> dict[str, dict]:
     """Discovery topic -> payload for every entity of every device."""
-    entities = scope_discovery(Scope(), options)
+    entities = scope_discovery(Scope(), options, providers)
     for printer in options.printers:
-        entities.update(scope_discovery(Scope(printer), options))
+        entities.update(scope_discovery(Scope(printer), options, providers))
     return entities
 
 
@@ -167,6 +170,7 @@ class MqttPublisher:
         self.client = None
         self.active: dict[str, dict] = {}
         self.scopes = [Scope(), *(Scope(p) for p in options.printers)]
+        self.providers = []
 
     async def _broker(self) -> dict | None:
         if self.options.mqtt_host:
@@ -193,7 +197,11 @@ class MqttPublisher:
                     self.client = client
                     backoff = 1
                     await client.subscribe(f"{PREFIX}/status")
-                    await client.subscribe(f"{BASE}/#")
+                    for scope in self.scopes:
+                        await client.subscribe(scope.topic("rescan"))
+                    for provider in self.providers:
+                        for topic in provider.subscriptions():
+                            await client.subscribe(topic)
                     await self.publish_all()
                     async for message in client.messages:
                         await self._handle(message)
@@ -210,14 +218,25 @@ class MqttPublisher:
                 await self.publish_all()
         elif any(topic == scope.topic("rescan") for scope in self.scopes):
             await self.on_rescan()
+        else:
+            for provider in self.providers:
+                if await provider.command(topic, message.payload):
+                    await self.publish_all()
+                    break
 
     async def _publish(self, topic: str, payload, retain: bool = True):
         text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
         await self.client.publish(topic, text, retain=retain)
 
     async def publish_all(self):
-        for topic, payload in discovery(self.options).items():
+        entities = discovery(self.options, self.providers)
+        for topic, payload in entities.items():
             await self._publish(topic, payload)
+        # Entities of deleted tasks and finished projects are removed with an empty config.
+        known = set(json.loads(self.db._get_meta("mqtt_topics") or "[]"))
+        for topic in known - set(entities):
+            await self._publish(topic, "")
+        self.db._set_meta("mqtt_topics", json.dumps(sorted(entities)))
         await self._publish(AVAILABILITY, ONLINE)
         await self.publish_states()
         await self._publish_current()
@@ -229,6 +248,9 @@ class MqttPublisher:
         for scope in self.scopes:
             for topic, payload in state_payloads(self.db, self.links, self.options, scope).items():
                 await self._publish(topic, payload)
+            for provider in self.providers:
+                for topic, payload in provider.states(scope).items():
+                    await self._publish(topic, payload)
 
     async def _publish_current(self):
         for scope in self.scopes:

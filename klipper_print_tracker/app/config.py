@@ -42,6 +42,8 @@ class Options:
     auto_fetch_layouts: bool = True
     spool_margin_percent: float = 5
     spool_check_auto_pause: bool = False
+    abrasive_patterns: str = "CF|GF|glow"
+    thumbnail_retention_days: int = 365
     log_level: str = "info"
 
     def __post_init__(self):
