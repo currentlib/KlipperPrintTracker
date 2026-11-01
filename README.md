@@ -4,7 +4,7 @@
 
 **Klipper-focused 3D print tracker** that counts the parts you print, logs print outcomes and keeps a history of the slicer settings behind every print.
 
-The main edition is a Home Assistant add-on. It watches Moonraker on its own, so there's nothing to install on the printer and nothing to set up in the slicer beyond "Exclude objects". Every print gets a record with status, printed and excluded parts, time, filament, energy and cost, plus the exact slicer settings it used, a git history of them and diffs between prints.
+The main edition is a Home Assistant add-on. It watches Moonraker on its own, so there's nothing to install on the printer and nothing to set up in the slicer beyond "Exclude objects". Every print gets a record with status, printed and excluded parts, time, filament, energy and cost, plus the exact slicer settings it used, a git history of them and diffs between prints. On top of that come ratings from the notification, a spool check at print start, maintenance reminders, failure analysis, a calibration log and projects, for one printer or several.
 
 [![Add repository to Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fcurrentlib%2FKlipperPrintTracker)
 [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fcurrentlib%2FKlipperPrintTracker%2Fmain%2Fhome-assistant%2Fblueprints%2Fautomation%2Fprint_finished_notification.yaml)
@@ -69,7 +69,7 @@ Google Sheet filled by the printer-host edition:
 
 **Трекер 3D-друку з фокусом на Klipper**, який рахує надруковані деталі, логує результати друку і зберігає історію налаштувань слайсера для кожного друку.
 
-Основна версія проєкту це add-on для Home Assistant. Він сам стежить за Moonraker, тому на принтер нічого не ставиться, а в слайсері достатньо ввімкнути "Exclude objects". Кожен друк отримує запис зі статусом, надрукованими і виключеними деталями, часом, пластиком, енергією та вартістю, а також точні налаштування слайсера, їхню git-історію і порівняння між друками.
+Основна версія проєкту це add-on для Home Assistant. Він сам стежить за Moonraker, тому на принтер нічого не ставиться, а в слайсері достатньо ввімкнути "Exclude objects". Кожен друк отримує запис зі статусом, надрукованими і виключеними деталями, часом, пластиком, енергією та вартістю, а також точні налаштування слайсера, їхню git-історію і порівняння між друками. Також є оцінки прямо зі сповіщення, перевірка котушки на старті друку, нагадування про обслуговування, аналіз збоїв, журнал калібрувань і проєкти, для одного принтера або кількох.
 
 ---
 

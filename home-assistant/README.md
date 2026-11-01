@@ -6,7 +6,8 @@ Files for Home Assistant that go with the [Print Tracker add-on](../klipper_prin
 
 | File | What it is |
 |---|---|
-| `blueprints/automation/print_finished_notification.yaml` | Phone notification when a print ends |
+| `blueprints/automation/print_finished_notification.yaml` | Phone notification when a print ends, with rating buttons, and spool warnings |
+| `blueprints/automation/maintenance_due_notification.yaml` | Maintenance reminder with Виконано and a 10 hour snooze |
 | `dashboards/printer_dashboard.yaml` | Dashboard on top of the add-on's entities (sections view, standard cards only) |
 | `packages/printer_extras.yaml` | Optional: pre-heat / cool-down scripts, fans-off and power-off automations |
 | `lite/print_tracker.yaml` | The frozen YAML-only tracker, for Home Assistant without add-ons |
@@ -14,7 +15,7 @@ Files for Home Assistant that go with the [Print Tracker add-on](../klipper_prin
 ## With the add-on
 
 1. Install the add-on and let it finish one print, or at least start, so its entities exist.
-2. Import the blueprint with the button in the [root README](../README.md), then create an automation from it.
+2. Import the blueprints (the button in the [root README](../README.md), or the raw file URL for the maintenance one), then create an automation from each. After an add-on update, use **Re-import blueprint**, Home Assistant doesn't do it for you.
 3. Copy `packages/printer_extras.yaml` to `/config/packages/` if you want the extras, and replace the placeholders: `my_printer`, `switch.printer_plug`, `number.my_printer_output_pin_fan*`.
 4. Paste `dashboards/printer_dashboard.yaml` into a new dashboard: Settings > Dashboards > Add dashboard > ⋮ > Raw configuration editor. Replace `my_printer`, `switch.printer_plug`, `sensor.printer_plug_power` and `sensor.printer_plug_energy_today`. The add-on's own entities don't need editing.
 
@@ -115,7 +116,7 @@ History lives in the attributes of `sensor.print_tracker` (a trigger-based templ
 
 Файли для Home Assistant до [add-on Print Tracker](../klipper_print_tracker/DOCS.md): blueprint сповіщень, дашборд, `printer_extras.yaml` і заморожена версія лише на YAML у `lite/`.
 
-**З add-on:** встанови add-on, імпортуй blueprint кнопкою з [кореневого README](../README.md), скопіюй `packages/printer_extras.yaml` у `/config/packages/` за потреби, встав `dashboards/printer_dashboard.yaml` через Raw configuration editor і заміни плейсхолдери `my_printer`, `switch.printer_plug`, `sensor.printer_plug_power`, `sensor.printer_plug_energy_today`. Сутності самого add-on міняти не треба.
+**З add-on:** встанови add-on, імпортуй обидва blueprint (сповіщення про друк і `maintenance_due_notification.yaml`) і після оновлення add-on виконуй **Re-import blueprint**, бо HA не робить цього сам. Кнопкою з [кореневого README](../README.md) імпортується перший, скопіюй `packages/printer_extras.yaml` у `/config/packages/` за потреби, встав `dashboards/printer_dashboard.yaml` через Raw configuration editor і заміни плейсхолдери `my_printer`, `switch.printer_plug`, `sensor.printer_plug_power`, `sensor.printer_plug_energy_today`. Сутності самого add-on міняти не треба.
 
 **Lite (заморожена версія, лише для HA без add-on):**
 

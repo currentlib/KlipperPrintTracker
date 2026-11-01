@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+- Several printers: a `printers` list, one MQTT device per printer plus a shared one, a printer switcher in the UI. Single-printer options keep working as `printer1`.
+- Rate prints and give a failure reason from the notification, with tags and notes on the print page.
+- Spool check when a print starts, with an optional automatic pause.
+- Maintenance reminders by print hours, filament, prints and days.
+- Failure analysis page, and failure details on every stopped print.
+- Calibration log with detection of OrcaSlicer tests.
+- Projects with target parts and progress.
+- Data size sensor, thumbnail retention, periodic `git gc`.
+- Database and settings history migrate on the first start, a copy of the old database stays as `tracker.db.pre-v2`.
+
 ## 0.2.0
 
 - The web UI follows the Home Assistant theme and looks like the rest of HA.
