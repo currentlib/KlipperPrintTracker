@@ -66,7 +66,7 @@ def message(job, include_changes=True):
 def test_blueprint_structure():
     data = blueprint()
     inputs = data["blueprint"]["input"]
-    assert set(inputs) == {"event_entity", "notify_device", "camera", "statuses", "include_changes"}
+    assert set(inputs) == {"event_entity", "notify_device", "camera", "statuses", "include_changes", "printer_filter"}
     assert data["blueprint"]["domain"] == "automation"
     assert data["triggers"][0]["entity_id"] == {"input": "event_entity"}
     assert inputs["notify_device"]["selector"]["device"]["filter"][0]["integration"] == "mobile_app"
@@ -105,6 +105,40 @@ def test_message_plurals(parts, word):
 def test_title(status, title):
     template = blueprint()["variables"]["notification_title"]
     assert render(template, {"status": status}).strip() == title
+
+
+def actions(job, apple=False):
+    data = blueprint()["variables"]
+    environment = env()
+    environment.globals["device_attr"] = lambda device, key: "Apple" if apple else "Google"
+    context = {"job": job, "status": job["event_type"], "notify_device": "d", "is_apple": apple,
+               "action_prefix": f"KPT_{job['printer_id']}_{job['job_id']}_"}
+    return yaml.safe_load(environment.from_string(data["notification_actions"]).render(**context).strip())
+
+
+JOB_IDS = {"printer_id": "printer1", "job_id": "00004F"}
+
+
+def test_rating_actions_after_a_completed_print():
+    items = actions({**JOB, **JOB_IDS})
+    assert [a["action"] for a in items] == ["KPT_printer1_00004F_good", "KPT_printer1_00004F_bad", "KPT_printer1_00004F_note"]
+    assert items[2]["behavior"] == "textInput"
+
+
+def test_failure_actions_fit_android():
+    items = actions({**JOB, **JOB_IDS, "event_type": "cancelled"})
+    assert len(items) == 3
+    assert [a["action"].rsplit("_", 1)[1] for a in items] == ["fail-adhesion", "fail-spaghetti", "fail-other"]
+
+
+def test_failure_actions_on_ios_have_every_reason():
+    items = actions({**JOB, **JOB_IDS, "event_type": "error"}, apple=True)
+    assert [a["title"] for a in items][2] == "Засмічення / недоекструзія" and len(items) == 4
+
+
+def test_rated_events_dont_break_the_title():
+    template = blueprint()["variables"]["notification_title"]
+    assert render(template, {"status": "rated"}).strip() == ""
 
 
 def cards(node):

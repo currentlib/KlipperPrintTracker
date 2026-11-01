@@ -82,6 +82,19 @@ def newer_version(a: str | None, b: str | None) -> str | None:
     return a if version_key(a) >= version_key(b) else b
 
 
+def results_by_value(jobs: list[tuple[dict, dict]], keys) -> dict:
+    """How prints went per value of each key: {key: {value: {good, bad, tags}}}."""
+    results = {key: {} for key in keys}
+    for record, values in jobs:
+        for key in keys:
+            entry = results[key].setdefault(values.get(key), {"good": 0, "bad": 0, "tags": {}})
+            if record.get("rating") in ("good", "bad"):
+                entry[record["rating"]] += 1
+            for tag in record.get("issues") or []:
+                entry["tags"][tag] = entry["tags"].get(tag, 0) + 1
+    return results
+
+
 def preset_values(config: dict, kind: str, name: str, keys: list[str]) -> dict:
     """Values of one preset in a config, per-filament lists reduced to that filament."""
     selected = {k: config[k] for k in keys if k in config} if keys else {}

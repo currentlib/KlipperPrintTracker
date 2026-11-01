@@ -64,6 +64,15 @@ def filament_value(raw: str, index: int, count: int) -> str:
     return values[index] if count > 1 and len(values) == count else raw
 
 
+def material(config: dict, filament_preset: str | None) -> str | None:
+    """Filament type of the preset a print used, filament_type lists every slot."""
+    types = split_values(config.get("filament_type", ""))
+    names = split_values(config.get("filament_settings_id", ""))
+    if filament_preset in names and len(types) == len(names):
+        return types[names.index(filament_preset)]
+    return types[0] if types else None
+
+
 def config_hash(config: dict) -> str:
     content = json.dumps(config, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(content.encode()).hexdigest()

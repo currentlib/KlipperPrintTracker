@@ -56,11 +56,18 @@ function fileCell(row) {
   return `<div class="file-cell"><a class="ellipsis" href="#/job/${enc(row.ref)}" title="${e(row.file)}">${e(row.file)}</a>${changed}</div>`;
 }
 
+function ratingIcon(rating) {
+  if (rating === "good") return `<span class="status-icon" style="--c:var(--success-color)" title="${S.rate_good}">${icon("thumb-up", "s18")}</span>`;
+  if (rating === "bad") return `<span class="status-icon" style="--c:var(--error-color)" title="${S.rate_bad}">${icon("thumb-down", "s18")}</span>`;
+  return "";
+}
+
 const JOB_COLUMNS = [
   { label: "", cls: "icon-cell thumb-cell", cell: (j) => thumb(j.thumbnail) },
   { id: "date", label: S.col_date, cls: "nowrap", cell: (j) => UI.date(j.end_time) },
   { id: "printer", label: S.printer, cls: "nowrap hide-m", cell: (j) => e(printerName(j.printer_id)), multi: true },
   { id: "file", label: S.col_file, cls: "file", cell: fileCell },
+  { id: "rating", label: S.col_rating, cls: "icon-col hide-m", cell: (j) => ratingIcon(j.rating) },
   { id: "status", label: S.col_status, cls: "nowrap status-cell", cell: (j) => UI.status(j.status) },
   { id: "parts", label: S.col_parts, cls: "num", cell: partsCell },
   { id: "minutes", label: S.col_time, cls: "num", cell: (j) => UI.duration(j.minutes) },
@@ -106,7 +113,10 @@ async function home() {
   printers = d.printers;
   setToolbar({ tab: "home" });
   const allPrints = `<a href="#/prints">${S.all_prints}${icon("chevron-right", "s18")}</a>`;
+  const banner = d.unrated ? section(`<a class="banner" href="#/prints?rating=none">${icon("star-outline")}
+    <span>${e(S.unrated_banner(d.unrated))}</span><span class="banner-action">${S.rate_now}${icon("chevron-right", "s18")}</span></a>`, "span-all") : "";
   return [
+    banner,
     section(`${heading("counter", S.stats)}<div class="tiles six">
       ${tile({ name: S.stat_prints, state: `${UI.number(d.total, 0)} · ${S.stat_breakdown(d.completed, d.cancelled, d.failed)}`, iconName: "printer-3d", variable: "--primary-color", href: "#/prints" })}
       ${tile({ name: S.stat_success, state: `${UI.percent(d.success_rate)} · ${S.stat_success_state(d.completed, d.total)}`, iconName: "check-decagram", variable: "--success-color" })}
@@ -178,7 +188,10 @@ async function prints() {
       ${UI.statusIcon(value, "s18")}${e(UI.statusLabel(value))}</a>`;
   }).join("");
   const presetNames = [...new Set(d.facets.presets.map((p) => p.name))].map((name) => [name, name]);
+  const rating = params.get("rating");
+  const ratingChip = (value, label, name) => `<a class="chip ${rating === value ? "on" : ""}" href="${e(listHref({ rating: rating === value ? "" : value }))}">${icon(name)}${label}</a>`;
   const chips = `<div class="chips">${statusChips}
+    ${ratingChip("none", S.unrated, "star-outline")}${ratingChip("good", S.rate_good, "thumb-up")}${ratingChip("bad", S.rate_bad, "thumb-down")}
     ${selectChip("preset", S.filter_preset, presetNames, params.get("preset") || "")}
     ${selectChip("spool", S.filter_spool, d.facets.spools.map((s) => [s, s]), params.get("spool") || "")}
     ${selectChip("period", S.filter_period, PERIODS.map((p) => [p, S[`period_${p}`]]), params.get("period") || "")}</div>`;
@@ -258,6 +271,32 @@ function presetBadges(j) {
   return items.join("");
 }
 
+function ratingBlock(j, tagList) {
+  const button = (value, label, name, variable) => `<button type="button" class="chip ${j.rating === value ? "on" : ""}" data-rate="${value}" style="--c:var(${variable})">${icon(name)}${label}</button>`;
+  const allTags = [...new Set([...tagList, ...j.issues])];
+  const chips = allTags.map((tag) => `<button type="button" class="chip ${j.issues.includes(tag) ? "on" : ""}" data-issue="${e(tag)}">${e(tag)}</button>`).join("");
+  const reasons = ["adhesion", "spaghetti", "clog", "other"].map((reason) =>
+    `<option value="${reason}"${j.failure_reason === reason ? " selected" : ""}>${S[`reason_${reason}`]}</option>`).join("");
+  return card(`<div class="card-body rating" data-ref="${e(j.ref)}">
+    <div class="chips">${button("good", S.rate_good, "thumb-up", "--success-color")}${button("bad", S.rate_bad, "thumb-down", "--error-color")}
+      ${j.status === "completed" ? "" : `<select class="chip ${j.failure_reason ? "on" : ""}" data-reason aria-label="${S.failure_reason}">
+        <option value="">${S.failure_reason}</option>${reasons}</select>`}</div>
+    <div class="group-label">${S.issues}</div><div class="chips">${chips}</div>
+    <textarea class="field" data-note rows="2" placeholder="${S.note_hint}" aria-label="${S.note}">${e(j.note)}</textarea>
+    <details class="manage"><summary>${S.manage_tags}</summary>
+      <textarea class="field" id="tags" rows="6" aria-label="${S.tags_hint}">${e(tagList.join("\n"))}</textarea>
+      <button type="button" class="text-button" data-action="save-tags">${S.save}</button></details>
+  </div>`);
+}
+
+async function rate(ref, fields) {
+  const response = await fetch(`api/job/${enc(ref)}/rating`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
 async function jobPage(id) {
   setToolbar({ back: true, tab: "prints", title: S.nav_prints });
   const j = await api(`job/${enc(id)}`);
@@ -272,14 +311,17 @@ async function jobPage(id) {
       ${j.live_data ? "" : `<div class="note">${icon("alert")}${S.best_effort}</div>`}`)
     + jobTiles(j), "span-all");
   if (j.config_missing) {
-    return header + section(card(empty("image-off-outline", S.config_missing)), "span-all");
+    return header + section(`${heading("thumb-up", S.rating)}${ratingBlock(j, await api("tags").then((t) => t.tags))}`, "span-all")
+      + section(card(empty("image-off-outline", S.config_missing)), "span-all");
   }
   const others = (await api("jobs?limit=100")).jobs.filter((o) => o.ref !== j.ref);
+  const { tags: tagList } = await api("tags");
   const picker = others.length ? `<div class="card-body"><select class="compare-select" id="compare" aria-label="${S.compare_with}">
     <option value="">${S.compare_with}</option>
     ${others.map((o) => `<option value="${e(o.ref)}">${e(UI.date(o.end_time))} · ${e(o.file)}</option>`).join("")}</select></div>` : "";
   const setting = (r) => tipRow(r, `${rawValue(r)}${unit(r)}`);
   return header
+    + section(`${heading("thumb-up", S.rating)}${ratingBlock(j, tagList)}`, "span-all")
     + section(`${heading("tune-variant", S.presets)}<div class="badges">${presetBadges(j)}</div>`, "span-all")
     + `<div class="columns span-all job-columns">
       ${section(`${heading("file-compare", S.changes)}${card(["file", "process", "filament"].map((k) => changeBlock(k, j.changes[k])).join(""))}${card(picker)}`)}
@@ -292,7 +334,7 @@ async function jobPage(id) {
 async function comparePage(a, b) {
   setToolbar({ back: true, tab: "prints", title: S.compare });
   const d = await api(`compare/${enc(a)}/${enc(b)}`);
-  const side = (j) => tile({ name: j.file, state: UI.date(j.end_time), iconName: UI.statusIconName(j.status), variable: UI.statusVariable(j.status), href: `#/job/${enc(j.ref)}` });
+  const side = (j) => tile({ name: j.file, state: [UI.date(j.end_time), j.rating && S[`rate_${j.rating}`], ...j.issues].filter(Boolean).join(" · "), iconName: UI.statusIconName(j.status), variable: UI.statusVariable(j.status), href: `#/job/${enc(j.ref)}` });
   return section(`${heading("compare-horizontal", S.compare)}<div class="tiles">${side(d.a)}${side(d.b)}</div>`, "span-all")
     + section(card(d.tabs.length ? tabsHtml(d.tabs, (r) => diffRow(r, r.a, r.b)) : empty("check-circle", S.compare_same)), "span-all");
 }
@@ -314,13 +356,21 @@ async function partPage(name) {
     + section(card(dataTable(columns, rows)), "span-all");
 }
 
+function resultLine(r) {
+  const result = r.results;
+  if (!result || !(result.good || result.bad)) return "";
+  const tags = Object.entries(result.tags).map(([tag, count]) => `${tag} x${count}`).join(", ");
+  return `<div class="row-note">${e(S.results_for_value(r.new.raw))}: ${icon("thumb-up", "s18")}${result.good} ${icon("thumb-down", "s18")}${result.bad}${tags ? ` · ${e(tags)}` : ""}</div>`;
+}
+
 async function presetPage(kind, name) {
   setToolbar({ back: true, tab: "prints", title: name });
   const d = await api(`preset/${enc(kind)}/${enc(name)}`);
   const entry = (t) => card(`<a class="diff-title" href="#/job/${enc(t.ref)}">
       ${UI.statusIcon(t.status)}<span class="ellipsis" title="${e(t.file)}">${e(t.file)}</span>
       <span class="muted" style="margin-left:auto;font-weight:400;white-space:nowrap">${e(UI.date(t.end_time))}</span></a>
-    ${t.first ? `<div class="row muted">${S.preset_first}</div>` : t.diff.map((r) => diffRow(r, r.old, r.new)).join("")}`);
+    ${t.issues.length || t.rating ? `<div class="row-note">${ratingIcon(t.rating)}${e(t.issues.join(", "))}</div>` : ""}
+    ${t.first ? `<div class="row muted">${S.preset_first}</div>` : t.diff.map((r) => diffRow(r, r.old, r.new) + resultLine(r)).join("")}`);
   return section(`${heading("tune-variant", `${S[`kind_${kind}`]}: ${d.name}`)}<div class="tiles">
       ${tile({ name: S.preset_prints, state: UI.number(d.prints, 0), iconName: "printer-3d", variable: "--primary-color" })}</div>`, "span-all")
     + section(`${heading("history", S.preset_history)}${d.timeline.map(entry).join("")}`, "span-all");
@@ -357,7 +407,25 @@ async function render() {
   if (run === renderRun) view.innerHTML = html;
 }
 
+async function saveRating(block, fields) {
+  await rate(block.dataset.ref, fields);
+}
+
 document.addEventListener("click", async (event) => {
+  const rater = event.target.closest("[data-rate], [data-issue]");
+  if (rater) {
+    const block = rater.closest(".rating");
+    if (rater.dataset.rate) {
+      const on = !rater.classList.contains("on");
+      block.querySelectorAll("[data-rate]").forEach((b) => b.classList.remove("on"));
+      rater.classList.toggle("on", on);
+      await saveRating(block, { rating: on ? rater.dataset.rate : null });
+    } else {
+      rater.classList.toggle("on");
+      await saveRating(block, { issues: [...block.querySelectorAll("[data-issue].on")].map((b) => b.dataset.issue) });
+    }
+    return;
+  }
   const target = event.target.closest("[data-tab], [data-tip], [data-action], tr[data-href]");
   if (!target || event.target.closest("a, select, pre") && !target.matches("[data-action]")) return;
   if (target.dataset.tab !== undefined) {
@@ -372,6 +440,12 @@ document.addEventListener("click", async (event) => {
     form.classList.toggle("open");
     if (form.classList.contains("open")) form.elements.file.focus();
     else form.requestSubmit();
+  } else if (target.dataset.action === "save-tags") {
+    await fetch("api/tags", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags: document.getElementById("tags").value.split("\n") }),
+    });
+    render();
   } else if (target.dataset.action === "rescan") {
     target.disabled = true;
     try {
@@ -385,6 +459,14 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target.dataset.reason !== undefined) {
+    saveRating(event.target.closest(".rating"), { failure_reason: event.target.value || null });
+    return;
+  }
+  if (event.target.dataset.note !== undefined) {
+    saveRating(event.target.closest(".rating"), { note: event.target.value });
+    return;
+  }
   if (event.target.dataset.printer !== undefined) {
     printer = event.target.value;
     try {

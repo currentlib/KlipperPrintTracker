@@ -7,10 +7,12 @@ import zlib
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
+from . import gcode
 from .calc import normalise_name
 from .config import DEFAULT_PRINTER
+from .ratings import DEFAULT_TAGS
 
-JSON_COLUMNS = ("printed", "excluded", "presets", "changes", "preset_drift")
+JSON_COLUMNS = ("printed", "excluded", "presets", "changes", "preset_drift", "issues", "spool_check")
 SORT_COLUMNS = {"date": "end_time", "file": "filename", "status": "status", "parts": "parts",
                 "minutes": "print_duration", "grams": "grams", "cost": "total_cost",
                 "per_part": "per_part", "spool": "spool"}
@@ -20,7 +22,10 @@ JOB_COLUMNS = (
     "spool_id", "spool", "price_kg", "energy_cost", "filament_cost", "total_cost",
     "per_part", "wasted_cost", "live_data", "config_hash", "config_missing", "slicer",
     "slicer_version", "presets", "thumbnail", "commit_sha", "changes", "preset_drift",
+    "material", "rating", "issues", "failure_reason", "note", "rated_at", "spool_check", "progress",
+    "current_layer", "total_layer", "chamber_temp", "interruption",
 )
+EDITABLE_COLUMNS = {"rating", "issues", "failure_reason", "note", "rated_at", "calibration"}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS configs (hash TEXT PRIMARY KEY, content BLOB NOT NULL);
@@ -76,7 +81,25 @@ def migrate_v2_printers(conn):
     conn.execute(f"UPDATE meta SET key = 'active:{DEFAULT_PRINTER}' WHERE key = 'active'")
 
 
-MIGRATIONS = [migrate_v2_printers]
+def migrate_v3_results(conn):
+    """Rating, failure details and spool check per print, material from the stored configs."""
+    for definition in ("material TEXT", "rating TEXT", "issues TEXT", "failure_reason TEXT", "note TEXT",
+                       "rated_at REAL", "spool_check TEXT", "progress REAL", "current_layer INTEGER",
+                       "total_layer INTEGER", "chamber_temp REAL", "interruption TEXT"):
+        conn.execute(f"ALTER TABLE jobs ADD COLUMN {definition}")
+    conn.execute("CREATE TABLE tags (name TEXT PRIMARY KEY, position INTEGER)")
+    conn.executemany("INSERT INTO tags VALUES (?, ?)", [(tag, i) for i, tag in enumerate(DEFAULT_TAGS)])
+    for printer_id, job_id, presets, config_hash in conn.execute(
+            "SELECT printer_id, job_id, presets, config_hash FROM jobs WHERE config_hash IS NOT NULL").fetchall():
+        row = conn.execute("SELECT content FROM configs WHERE hash = ?", (config_hash,)).fetchone()
+        if row:
+            names = json.loads(presets or "{}").get("filament") or [None]
+            material = gcode.material(json.loads(zlib.decompress(row[0])), names[0])
+            conn.execute("UPDATE jobs SET material = ? WHERE printer_id = ? AND job_id = ?",
+                         (material, printer_id, job_id))
+
+
+MIGRATIONS = [migrate_v2_printers, migrate_v3_results]
 
 
 class Database:
@@ -176,8 +199,24 @@ class Database:
         rows = self._query("SELECT * FROM jobs WHERE job_id = ? ORDER BY printer_id LIMIT 1", (job_id,))
         return self._job(rows[0]) if rows else None
 
+    def update_job(self, job_id: str, printer_id: str = DEFAULT_PRINTER, **fields):
+        unknown = set(fields) - EDITABLE_COLUMNS
+        if unknown:
+            raise ValueError(f"Not editable: {unknown}")
+        columns = ", ".join(f"{name} = ?" for name in fields)
+        values = [json.dumps(v, ensure_ascii=False) if name in JSON_COLUMNS else v for name, v in fields.items()]
+        self._write(f"UPDATE jobs SET {columns} WHERE printer_id = ? AND job_id = ?", (*values, printer_id, job_id))
+
+    def tags(self) -> list[str]:
+        return [row["name"] for row in self._query("SELECT name FROM tags ORDER BY position, name")]
+
+    def set_tags(self, names: list[str]):
+        with self.lock, self.conn:
+            self.conn.execute("DELETE FROM tags")
+            self.conn.executemany("INSERT OR IGNORE INTO tags VALUES (?, ?)", [(n, i) for i, n in enumerate(names)])
+
     def jobs(self, printer=None, file=None, status=None, preset=None, spool=None, date_from=None,
-             date_to=None, limit=100, offset=0, sort="date", descending=True) -> tuple[list[dict], int]:
+             date_to=None, rating=None, limit=100, offset=0, sort="date", descending=True) -> tuple[list[dict], int]:
         where, params = [], []
         if printer:
             where.append("printer_id = ?")
@@ -194,6 +233,11 @@ class Database:
         if spool:
             where.append("spool = ?")
             params.append(spool)
+        if rating == "none":
+            where.append("rating IS NULL")
+        elif rating:
+            where.append("rating = ?")
+            params.append(rating)
         if date_from is not None:
             where.append("end_time >= ?")
             params.append(date_from)
@@ -292,7 +336,7 @@ class Database:
             COALESCE(SUM(status = 'error'), 0) failed,
             COALESCE(SUM(parts), 0) parts, COALESCE(SUM(grams), 0) grams,
             COALESCE(SUM(kwh), 0) kwh, COALESCE(SUM(total_cost), 0) total_cost,
-            COALESCE(SUM(wasted_cost), 0) wasted_cost FROM jobs
+            COALESCE(SUM(wasted_cost), 0) wasted_cost, COALESCE(SUM(rating IS NULL), 0) unrated FROM jobs
             WHERE ? IS NULL OR printer_id = ?""", (printer, printer))[0]
         stats = dict(row)
         stats["success_rate"] = round(100 * stats["completed"] / stats["total"], 1) if stats["total"] else 0

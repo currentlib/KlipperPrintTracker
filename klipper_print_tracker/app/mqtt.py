@@ -34,6 +34,8 @@ SENSORS = {
     "energy_used": {"name": "Energy used", "device_class": "energy", "state_class": "total_increasing",
                     "unit_of_measurement": "kWh", "value_template": "{{ value_json.kwh }}",
                     "topic": "stats"},
+    "unrated_prints": {"name": "Unrated prints", "icon": "mdi:star-outline", "unit_of_measurement": "prints",
+                       "value_template": "{{ value_json.unrated }}", "topic": "stats"},
     "last_print": {"name": "Last print", "icon": "mdi:history",
                    "value_template": "{{ value_json.status }}", "topic": "last_print", "attributes": True},
     "recent_prints": {"name": "Recent prints", "icon": "mdi:format-list-bulleted",
@@ -243,6 +245,13 @@ class MqttPublisher:
         for scope in self.scopes:
             if scope.id in (None, printer_id):
                 await self._publish(scope.topic("event"), payload, retain=False)
+
+    async def job_rated(self, record: dict):
+        if not self.client:
+            return
+        await self.publish_states()
+        summary = job_summary(record, self.links, display_currency(self.options.currency))
+        await self.publish_event(record["printer_id"], {**summary, "event_type": "rated"})
 
     # Tracker listener. Without a connection the data waits in the database.
 

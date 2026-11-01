@@ -47,6 +47,12 @@ blueprint:
               value: cancelled
             - label: Error
               value: error
+    printer_filter:
+      name: Printer
+      description: Only this printer id, for example printer1. Leave empty for all printers.
+      default: ""
+      selector:
+        text:
     include_changes:
       name: Include settings changes
       description: Add a line with the settings changed since the previous print.
@@ -69,12 +75,14 @@ variables:
   camera: !input camera
   statuses: !input statuses
   include_changes: !input include_changes
+  printer_filter: !input printer_filter
+  notify_device: !input notify_device
   job: "{{ dict(trigger.to_state.attributes) }}"
   status: "{{ job.event_type }}"
   notification_title: >-
     {{ {'completed': '✅ Друк завершено',
         'cancelled': '⏹️ Друк скасовано',
-        'error': '❌ Помилка друку'}[status] }}
+        'error': '❌ Помилка друку'}.get(status, '') }}
   notification_message: |-
     {%- set minutes = job.minutes | int(0) -%}
     {%- set h = minutes // 60 -%}
@@ -100,9 +108,31 @@ variables:
     ⚙️ Змінено з минулого друку: {{ job.changed_settings | join(', ') }}
     {%- endif %}
 
+  # Android shows three actions, iOS has room for every reason. The add-on reads the
+  # replies from the event bus, so no other automation is needed.
+  action_prefix: "KPT_{{ job.printer_id }}_{{ job.job_id }}_"
+  is_apple: "{{ device_attr(notify_device, 'manufacturer') == 'Apple' }}"
+  notification_actions: >-
+    {% set prefix = action_prefix %}
+    {% if status == 'completed' %}
+      {{ [{'action': prefix ~ 'good', 'title': '👍 Добре'},
+          {'action': prefix ~ 'bad', 'title': '👎 Погано'},
+          {'action': prefix ~ 'note', 'title': '💬 Нотатка', 'behavior': 'textInput',
+           'textInputButtonTitle': 'Зберегти', 'textInputPlaceholder': 'Нотатка до друку'}] }}
+    {% else %}
+      {% set first = [{'action': prefix ~ 'fail-adhesion', 'title': 'Відклеїлось'},
+                      {'action': prefix ~ 'fail-spaghetti', 'title': 'Спагеті / зсув'}] %}
+      {% set clog = [{'action': prefix ~ 'fail-clog', 'title': 'Засмічення / недоекструзія'}] %}
+      {{ first + (clog if is_apple else []) + [{'action': prefix ~ 'fail-other', 'title': 'Інше',
+         'behavior': 'textInput', 'textInputButtonTitle': 'Зберегти',
+         'textInputPlaceholder': 'Що пішло не так?'}] }}
+    {% endif %}
+
 conditions:
   - condition: template
     value_template: "{{ status in statuses }}"
+  - condition: template
+    value_template: "{{ not printer_filter or job.printer_id == printer_filter }}"
 
 actions:
   - if:
@@ -118,6 +148,7 @@ actions:
           url: "{{ job.url }}"
           clickAction: "{{ job.url }}"
           tag: print_tracker
+          actions: "{{ notification_actions }}"
           image: "/api/camera_proxy/{{ camera }}"
     else:
       - domain: mobile_app
@@ -129,3 +160,4 @@ actions:
           url: "{{ job.url }}"
           clickAction: "{{ job.url }}"
           tag: print_tracker
+          actions: "{{ notification_actions }}"

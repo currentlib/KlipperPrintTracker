@@ -9,6 +9,7 @@ from aiohttp import web
 
 from . import summary, views
 from .config import DEFAULT_PRINTER
+from .ratings import FAILURE_REASONS
 from .settings_git import diff_configs, short_changes
 
 log = logging.getLogger(__name__)
@@ -59,6 +60,9 @@ def create_app(services, ingress: bool = True, allowed_peer: str | None = INGRES
         web.get("/api/part/{name}", part),
         web.get("/api/preset/{kind}/{name}", preset),
         web.post("/api/reconcile", reconcile),
+        web.post("/api/job/{job_id}/rating", rate),
+        web.get("/api/tags", tags),
+        web.post("/api/tags", save_tags),
         web.static("/static", STATIC),
         web.get("/thumbs/{name}", thumbnail),
     ])
@@ -89,7 +93,9 @@ def _row(record: dict, links) -> dict:
             "thumbnail": record.get("thumbnail") and f"thumbs/{record['thumbnail']}",
             "changed": len(short_changes(record)), "kwh": record.get("kwh"),
             "live_data": bool(record.get("live_data")), "spool": record.get("spool") or "",
-            "excluded_names": ", ".join(record.get("excluded") or {})}
+            "excluded_names": ", ".join(record.get("excluded") or {}), "rating": record.get("rating"),
+            "issues": record.get("issues") or [], "failure_reason": record.get("failure_reason"),
+            "note": record.get("note") or "", "material": record.get("material")}
 
 
 async def stats(request):
@@ -118,6 +124,7 @@ def _date(value: str | None, days: int = 0) -> float | None:
 def _filters(request) -> dict:
     q = request.query
     return {"printer": q.get("printer") or None, "file": q.get("file") or None, "status": q.get("status") or None,
+            "rating": q.get("rating") or None,
             "preset": q.get("preset") or None, "spool": q.get("spool") or None,
             "date_from": _date(q.get("from")), "date_to": _date(q.get("to"), 1)}
 
@@ -243,15 +250,55 @@ async def preset(request):
         if layout:
             break
     keys = layout["preset_keys"][kind] if layout else []
-    timeline, previous = [], None
+    timeline, previous, all_values = [], None, []
     for record in records:
         values = views.preset_values(s.db.get_config(record["config_hash"]), kind, name, keys)
+        all_values.append((record, values))
         if previous is None or previous != values:
             timeline.append({**_row(record, s.links), "first": previous is None,
                              "diff": views.labelled_diff(diff_configs(previous or values, values), layout)})
         previous = values
+    changed = {row["key"] for entry in timeline for row in entry["diff"]}
+    results = views.results_by_value(all_values, changed)
+    for entry in timeline:
+        for row in entry["diff"]:
+            row["results"] = results[row["key"]].get(row["new"].get("raw"))
     return web.json_response({"kind": kind, "name": name, "prints": len(records),
                               "timeline": timeline[::-1]})
+
+
+async def _body(request) -> dict:
+    try:
+        body = await request.json()
+    except ValueError as err:
+        raise web.HTTPBadRequest(text="Bad JSON") from err
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest(text="Expected an object")
+    return body
+
+
+async def rate(request):
+    record = _get_job(request)
+    body = await _body(request)
+    fields = {k: body[k] for k in ("rating", "issues", "failure_reason", "note") if k in body}
+    if fields.get("rating") not in ("good", "bad", None):
+        raise web.HTTPBadRequest(text="Bad rating")
+    if fields.get("failure_reason") not in (*FAILURE_REASONS, None):
+        raise web.HTTPBadRequest(text="Bad failure reason")
+    updated = await _services(request).ratings.update(record["printer_id"], record["job_id"], **fields)
+    return web.json_response(_row(updated, _services(request).links))
+
+
+async def tags(request):
+    return web.json_response({"tags": _services(request).db.tags()})
+
+
+async def save_tags(request):
+    names = (await _body(request)).get("tags")
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        raise web.HTTPBadRequest(text="Expected a list of tags")
+    _services(request).db.set_tags([n.strip() for n in names if n.strip()])
+    return web.json_response({"tags": _services(request).db.tags()})
 
 
 async def reconcile(request):

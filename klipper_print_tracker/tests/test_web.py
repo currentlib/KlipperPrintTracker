@@ -10,6 +10,7 @@ from app import web as web_module
 from app.config import Options
 from app.db import Database
 from app.links import Links
+from app.ratings import Ratings
 from app.settings_git import SettingsHistory
 from app.slicer_meta import LayoutStore
 from app.web import create_app
@@ -67,7 +68,7 @@ async def services(tmp_path):
     tracker = Tracker()
     tracker.moonraker, tracker.printer = moonraker, NoMoonraker.printer
     yield SimpleNamespace(options=Options(currency="UAH"), db=db, trackers={"printer1": tracker},
-                          layouts=layouts, links=links, thumbs=tmp_path / "thumbs", mqtt=None)
+                          layouts=layouts, links=links, thumbs=tmp_path / "thumbs", mqtt=None, ratings=Ratings(db))
     db.close()
 
 
@@ -241,3 +242,30 @@ def test_deep_link_route_regex_matches_real_paths():
     assert re.search(pattern, "/app/abc_klipper_print_tracker/job/000001").group(0) == "/job/000001"
     assert re.search(pattern, "/abc_klipper_print_tracker/compare/1/2").group(0) == "/compare/1/2"
     assert re.search(pattern, "/app/abc_klipper_print_tracker") is None
+
+
+async def test_rating_api(client, services):
+    response = await client.post("/api/job/printer1:000001/rating", json={"rating": "good", "issues": ["warping"], "note": "ok"})
+    data = await response.json()
+    assert data["rating"] == "good" and data["issues"] == ["warping"] and data["note"] == "ok"
+    assert (await client.post("/api/job/printer1:000001/rating", json={"rating": "meh"})).status == 400
+    assert (await client.post("/api/job/printer1:000001/rating", json={"failure_reason": "x"})).status == 400
+    assert (await (await client.get("/api/jobs?rating=good")).json())["total"] == 1
+    assert (await (await client.get("/api/stats")).json())["unrated"] == 2
+
+
+async def test_tags_api(client):
+    assert "stringing" in (await (await client.get("/api/tags")).json())["tags"]
+    data = await (await client.post("/api/tags", json={"tags": [" a ", "", "b"]})).json()
+    assert data["tags"] == ["a", "b"]
+    assert (await client.post("/api/tags", json={"tags": "a"})).status == 400
+
+
+async def test_preset_timeline_has_results_per_value(client, services):
+    services.db.update_job("000001", "printer1", rating="bad", issues=["stringing"])
+    services.db.update_job("000002", "printer1", rating="good")
+    services.db.update_job("000003", "printer1", rating="good")
+    data = await (await client.get("/api/preset/process/0.24mm Draft @Creality K1C")).json()
+    row = data["timeline"][1]["diff"][0]
+    assert row["key"] == "outer_wall_speed" and row["new"]["raw"] == "180"
+    assert row["results"] == {"good": 1, "bad": 0, "tags": {}}

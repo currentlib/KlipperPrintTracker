@@ -10,6 +10,7 @@ from .config import DATA_DIR, load_options
 from .db import Database
 from .links import Links
 from .moonraker import Moonraker
+from .ratings import HomeAssistantEvents, Ratings
 from .mqtt import MqttPublisher
 from .settings_git import SettingsHistory, migrate_git_layout
 from .sheets import GoogleSheets
@@ -31,6 +32,7 @@ class Services:
     layouts: LayoutStore
     links: Links
     thumbs: object
+    ratings: Ratings
     mqtt: MqttPublisher | None = None
 
 
@@ -84,13 +86,16 @@ async def main():
         sheets = GoogleSheets(options, supervisor, links)
         for tracker in trackers.values():
             tracker.listeners = [mqtt, sheets]
-        services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", mqtt)
+        ratings = Ratings(db, [mqtt])
+        events = HomeAssistantEvents(session, supervisor.token)
+        events.handlers.append(ratings.from_action)
+        services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", ratings, mqtt)
 
         runners = [await serve(create_app(services), INGRESS_PORT),
                    await serve(create_app(services, ingress=False), DIRECT_PORT)]
         log.info("Print Tracker started, panel at %s", links.panel())
         try:
-            jobs = [keep_running("MQTT", mqtt.run)]
+            jobs = [keep_running("MQTT", mqtt.run), keep_running("HA events", events.run)]
             for printer_id, tracker in trackers.items():
                 jobs.append(keep_running(f"Moonraker {printer_id}", tracker.moonraker.run))
                 jobs.append(keep_running(f"Reconcile {printer_id}", tracker.run_reconcile))

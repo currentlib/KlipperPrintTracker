@@ -155,6 +155,7 @@ class SettingsHistory:
         self.db.store_config(record["config_hash"], config)
         used = gcode.used_filaments(head)
         record["presets"] = self._presets(config, used)
+        record["material"] = gcode.material(config, (record["presets"].get("filament") or [None])[0])
         record["changes"] = self._changes(record, config)
         layout = await self.layouts.get(record["slicer"], record["slicer_version"])
         values = self._preset_values(config, record["presets"], layout, used)

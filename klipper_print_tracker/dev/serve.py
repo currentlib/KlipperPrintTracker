@@ -23,6 +23,7 @@ from aiohttp import web  # noqa: E402
 from app.config import Options, PrinterOptions  # noqa: E402
 from app.db import Database  # noqa: E402
 from app.links import Links  # noqa: E402
+from app.ratings import Ratings  # noqa: E402
 from app.settings_git import SettingsHistory  # noqa: E402
 from app.slicer_meta import LayoutStore  # noqa: E402
 from app.web import create_app  # noqa: E402
@@ -135,7 +136,7 @@ async def main():
     tracker.moonraker, tracker.printer = moonraker, PrinterOptions(name="Creality K1C")
     services = SimpleNamespace(options=Options(currency="UAH"), db=db, trackers={"printer1": tracker},
                                layouts=layouts, links=Links("local_klipper_print_tracker"),
-                               thumbs=history.thumbs, mqtt=None)
+                               thumbs=history.thumbs, mqtt=None, ratings=Ratings(db))
     app = create_app(services, allowed_peer=None)
     app.router.add_get("/harness", harness)
     if args.fonts:
