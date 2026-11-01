@@ -1,0 +1,48 @@
+configuration:
+  moonraker_url:
+    name: Moonraker URL
+    description: For example http://192.168.1.50:7125. Creality K1 series printers also work on port 4408.
+  printer_name:
+    name: Printer name
+    description: Used in the name of the MQTT device.
+  energy_sensor:
+    name: Energy sensor
+    description: Entity ID of a total energy counter in kWh, not a daily one.
+  electricity_price:
+    name: Electricity price
+    description: Price per kWh.
+  default_filament_price:
+    name: Default filament price
+    description: Price per kg, used when Spoolman has no price.
+  currency:
+    name: Currency
+    description: Display only.
+  google_sheets_config_entry:
+    name: Google Sheets config entry
+    description: When set, a row is appended for every print.
+  google_sheets_worksheet:
+    name: Google Sheets worksheet
+    description: The worksheet must already exist.
+  mqtt_host:
+    name: MQTT host
+    description: Only needed when the Mosquitto app is not installed.
+  mqtt_port:
+    name: MQTT port
+    description: Defaults to 1883.
+  mqtt_username:
+    name: MQTT username
+    description: Manual broker login.
+  mqtt_password:
+    name: MQTT password
+    description: Manual broker login.
+  direct_url:
+    name: Direct URL
+    description: Address of the optional direct port, for example http://printer-pi.example:8100. Enables direct links.
+  auto_fetch_layouts:
+    name: Fetch slicer layouts
+    description: Generate metadata from OrcaSlicer sources when a slicer version is not bundled.
+  log_level:
+    name: Log level
+    description: How much detail to write to the log.
+network:
+  8100/tcp: Optional read-only web UI outside Home Assistant

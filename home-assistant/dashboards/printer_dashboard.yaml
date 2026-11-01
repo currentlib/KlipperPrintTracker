@@ -5,9 +5,11 @@
 #  Вставити: Settings -> Dashboards -> Add dashboard -> відкрити ->
 #  олівець -> три крапки -> Raw configuration editor.
 #
-#  Потрібні packages print_tracker.yaml і printer_extras.yaml.
+#  Потрібні add-on Print Tracker (сутності sensor.print_tracker_*) і package
+#  printer_extras.yaml.
 #  Плейсхолдери: my_printer, switch.printer_plug, sensor.printer_plug_power,
-#  sensor.printer_plug_energy_today.
+#  sensor.printer_plug_energy_today. Префікс сутностей add-on задається
+#  самим add-on, його міняти не треба.
 #  chamber_temp і mcu_temp є не на всіх принтерах - прибери, якщо немає.
 # =====================================================================
 
@@ -346,10 +348,11 @@ views:
           - type: markdown
             title: Вартість
             content: >-
-              {% set tariff = states('input_number.print_tracker_tariff') |
-              float(0) or 4.32 %} {% set kwh =
+              {% set e = 'sensor.print_tracker_total_prints' %} {% set tariff =
+              state_attr(e, 'electricity_price') | float(0) %} {% set kwh =
               states('sensor.printer_plug_energy_today') | float(0) %} 💸 Сьогодні:
-              **{{ (kwh * tariff) | round(2) }} грн** ({{ kwh }} кВт·год)
+              **{{ (kwh * tariff) | round(2) }} {{ state_attr(e, 'currency') or '' }}**
+              ({{ kwh }} кВт·год)
             grid_options:
               columns: full
           - type: history-graph
@@ -361,13 +364,11 @@ views:
               - entity: sensor.printer_plug_power
                 name: Потужність
           - type: tile
-            entity: sensor.printer_active_spool
-            name: Активна котушка
+            entity: sensor.print_tracker_last_print
+            name: Котушка останнього друку
             icon: mdi:printer-3d-nozzle
             color: grey
-            state_content:
-              - spool_name
-              - state
+            state_content: spool
             grid_options:
               columns: full
           - type: heading
@@ -406,7 +407,7 @@ views:
             grid_options:
               columns: full
       # =================================================================
-      #  СЕКЦІЯ 4: Історія друку (потрібен package print_tracker.yaml)
+      #  СЕКЦІЯ 4: Історія друку (сутності add-on Print Tracker)
       # =================================================================
       - type: grid
         column_span: 3
@@ -416,7 +417,7 @@ views:
             icon: mdi:history
             badges:
               - type: entity
-                entity: sensor.print_tracker
+                entity: sensor.print_tracker_total_prints
                 show_icon: true
                 icon: mdi:counter
 
@@ -425,8 +426,9 @@ views:
             grid_options:
               columns: full
             content: |-
-              {%- set e = 'sensor.print_tracker' -%}
-              {%- set t = state_attr(e, 'total_jobs') or 0 -%}
+              {%- set e = 'sensor.print_tracker_total_prints' -%}
+              {%- set t = state_attr(e, 'total') or 0 -%}
+              {%- set cur = state_attr(e, 'currency') or '' -%}
               {%- if t == 0 -%}
               Ще немає жодного запису. Історія зʼявиться після першого завершеного друку.
               {%- else -%}
@@ -434,9 +436,9 @@ views:
               |:-:|:-:|:-:|:-:|:-:|
               | **{{ t }}** | {{ state_attr(e, 'completed') }} | {{ state_attr(e, 'cancelled') }} | {{ state_attr(e, 'failed') }} | **{{ state_attr(e, 'success_rate') }}%** |
 
-              🧩 Деталей: **{{ state_attr(e, 'total_parts') }}** · 🧵 Пластику: **{{ ((state_attr(e, 'total_grams') or 0) / 1000) | round(2) }} кг** · ⚡ Енергії: **{{ state_attr(e, 'total_kwh') }} кВт·год**
+              🧩 Деталей: **{{ state_attr(e, 'parts') }}** · 🧵 Пластику: **{{ state_attr(e, 'filament_kg') }} кг** · ⚡ Енергії: **{{ state_attr(e, 'kwh') }} кВт·год**
 
-              💸 Всього витрачено: **{{ state_attr(e, 'total_cost') }} грн**, з них на невдалі друки: **{{ state_attr(e, 'wasted_cost') }} грн**
+              💸 Всього витрачено: **{{ state_attr(e, 'total_cost') }} {{ cur }}**, з них на невдалі друки: **{{ state_attr(e, 'wasted_cost') }} {{ cur }}**
               {%- endif -%}
 
           # --- Останні друки ---
@@ -445,18 +447,19 @@ views:
             grid_options:
               columns: full
             content: |-
-              {%- set jobs = state_attr('sensor.print_tracker', 'jobs') or [] -%}
+              {%- set jobs = state_attr('sensor.print_tracker_recent_prints', 'jobs') or [] -%}
+              {%- set cur = state_attr('sensor.print_tracker_total_prints', 'currency') or '' -%}
               {%- set icon = {'completed': '✅', 'cancelled': '⏹️', 'error': '❌'} -%}
               {%- if jobs | count == 0 -%}
               Поки порожньо.
               {%- else -%}
-              | | Коли | Файл | Деталі | Час | г | грн | грн/шт | Котушка |
-              |:-:|:--|:--|:-:|--:|--:|--:|--:|:--|
+              | | Коли | Файл | Деталі | Час | г | {{ cur }} | {{ cur }}/шт | Котушка | |
+              |:-:|:--|:--|:-:|--:|--:|--:|--:|:--|:-:|
               {%- for j in jobs %}
-              | {{ icon.get(j.status, '❔') }} | {{ j.date }} | {{ j.file | truncate(28, true, '…') }} | {{ j.parts }}{% if j.planned %}/{{ j.planned }}{% endif %}{% if j.excluded %} ⚠️{% endif %} | {{ j.minutes // 60 }}:{{ '%02d' | format(j.minutes % 60) }} | {{ j.grams }} | {{ j.cost }} | {{ j.per_part if j.per_part else '-' }} | {{ j.spool | truncate(20, true, '…') }} |
+              | {{ icon.get(j.status, '❔') }} | {{ j.date }} | {{ j.file | truncate(28, true, '…') }} | {{ j.parts }}{% if j.planned %}/{{ j.planned }}{% endif %}{% if j.excluded %} ⚠️{% endif %} | {{ j.minutes // 60 }}:{{ '%02d' | format(j.minutes % 60) }} | {{ j.grams }} | {{ j.cost }} | {{ j.per_part if j.per_part else '-' }} | {{ j.spool | truncate(20, true, '…') }} | {% if j.url %}[⚙️]({{ j.url }}){% endif %} |
               {%- endfor %}
 
-              ⚠️ - частину деталей виключено під час друку
+              ⚠️ - частину деталей виключено під час друку, ⚙️ - налаштування цього друку
               {%- endif -%}
 
           # --- Лічильники по деталях ---
@@ -465,14 +468,14 @@ views:
             grid_options:
               columns: 6
             content: |-
-              {%- set d = state_attr('sensor.print_tracker', 'object_totals') or {} -%}
+              {%- set d = state_attr('sensor.print_tracker_top_parts', 'parts') or [] -%}
               {%- if d | count == 0 -%}
               Поки порожньо.
               {%- else -%}
               | Деталь | Шт |
               |:--|--:|
-              {%- for k, v in (d.items() | sort(attribute='1', reverse=true))[:20] %}
-              | {{ k }} | **{{ v }}** |
+              {%- for p in d %}
+              | {{ p.name }} | **{{ p.count }}** |
               {%- endfor %}
               {%- endif -%}
 
@@ -482,39 +485,22 @@ views:
             grid_options:
               columns: 6
             content: |-
-              {%- set d = state_attr('sensor.print_tracker', 'excluded_totals') or {} -%}
-              {%- set ok = state_attr('sensor.print_tracker', 'object_totals') or {} -%}
+              {%- set d = state_attr('sensor.print_tracker_top_parts', 'excluded') or [] -%}
               {%- if d | count == 0 -%}
               Жодна деталь ще не виключалась 🎉
               {%- else -%}
               | Деталь | Виключено | % від спроб |
               |:--|--:|--:|
-              {%- for k, v in (d.items() | sort(attribute='1', reverse=true))[:10] %}
-              | {{ k }} | **{{ v }}** | {{ (100 * v / (v + ok.get(k, 0))) | round(0) | int }}% |
+              {%- for p in d %}
+              | {{ p.name }} | **{{ p.count }}** | {{ p.rate | int }}% |
               {%- endfor %}
               {%- endif -%}
 
-          # --- Налаштування трекера ---
-          - type: tile
-            entity: input_number.print_tracker_tariff
-            name: Тариф
-            icon: mdi:cash
-            color: green
-            features:
-              - type: numeric-input
-                style: buttons
-          - type: tile
-            entity: input_number.print_tracker_filament_price
-            name: Ціна пластику (якщо немає в Spoolman)
-            icon: mdi:printer-3d-nozzle
-            color: green
-            features:
-              - type: numeric-input
-                style: buttons
-          - type: tile
-            entity: input_boolean.print_tracker_gsheets
-            name: Писати в Google Sheets
-            icon: mdi:google-spreadsheet
-            color: green
-            features:
-              - type: toggle
+          # --- Панель add-on ---
+          - type: markdown
+            grid_options:
+              columns: full
+            content: >-
+              {%- set url = state_attr('sensor.print_tracker_total_prints', 'panel_url') -%}
+              {% if url %}**[📂 Відкрити Print Tracker]({{ url }})**{% else %}Add-on Print Tracker
+              ще не опублікував дані.{% endif %}
