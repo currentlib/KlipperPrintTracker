@@ -19,7 +19,7 @@ TOPICS = {name: f"{BASE}/{name}" for name in (
 SENSORS = {
     "total_prints": {"name": "Total prints", "icon": "mdi:printer-3d", "state_class": "total_increasing",
                      "unit_of_measurement": "prints", "value_template": "{{ value_json.total }}",
-                     "topic": "stats"},
+                     "topic": "stats", "attributes": True},
     "success_rate": {"name": "Success rate", "icon": "mdi:check-decagram", "state_class": "measurement",
                      "unit_of_measurement": "%", "value_template": "{{ value_json.success_rate }}",
                      "topic": "stats"},
@@ -90,17 +90,18 @@ def discovery(options, version: str = "0.1.0") -> dict[str, dict]:
     return entities
 
 
-def state_payloads(db, links, recent: int = 10) -> dict[str, dict]:
+def state_payloads(db, links, options, recent: int = 10) -> dict[str, dict]:
     """Retained state topic -> payload, derived from the database."""
     stats = db.stats()
     jobs, total = db.jobs(limit=recent)
     payloads = {
-        TOPICS["stats"]: stats,
+        TOPICS["stats"]: {**stats, "currency": options.currency, "panel_url": links.panel(),
+                          "electricity_price": options.electricity_price},
         TOPICS["recent"]: {"count": total, "jobs": [recent_row(j, links) for j in jobs]},
         TOPICS["top_parts"]: {"count": db.distinct_parts(), "parts": db.top_parts(), "excluded": db.top_excluded()},
     }
     if jobs:
-        payloads[TOPICS["last_print"]] = job_summary(jobs[0], links)
+        payloads[TOPICS["last_print"]] = job_summary(jobs[0], links, options.currency)
     return payloads
 
 
@@ -175,7 +176,7 @@ class MqttPublisher:
         await self._flush_events()
 
     async def _publish_states(self):
-        for topic, payload in state_payloads(self.db, self.links).items():
+        for topic, payload in state_payloads(self.db, self.links, self.options).items():
             await self._publish(topic, payload)
 
     async def _publish_current(self):
@@ -185,7 +186,8 @@ class MqttPublisher:
 
     async def _flush_events(self):
         for record in self.db.pending_events():
-            payload = {"event_type": record["status"], **job_summary(record, self.links)}
+            summary = job_summary(record, self.links, self.options.currency)
+            payload = {"event_type": record["status"], **summary}
             await self._publish(TOPICS["event"], payload, retain=False)
             self.db.mark_event_sent(record["job_id"])
 

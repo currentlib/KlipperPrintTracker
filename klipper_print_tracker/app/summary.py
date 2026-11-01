@@ -6,7 +6,7 @@ from .settings_git import short_changes
 MAX_CHANGED_KEYS = 10
 
 
-def job_summary(record: dict, links) -> dict:
+def job_summary(record: dict, links, currency: str = "") -> dict:
     excluded = record.get("excluded") or {}
     summary = {
         "job_id": record["job_id"],
@@ -20,6 +20,7 @@ def job_summary(record: dict, links) -> dict:
         "kwh": record.get("kwh"),
         "cost": record.get("total_cost", 0),
         "cost_per_part": record.get("per_part", 0),
+        "currency": currency,
         "spool": record.get("spool"),
         "changed_settings": short_changes(record)[:MAX_CHANGED_KEYS],
         "url": links.job(record["job_id"]),

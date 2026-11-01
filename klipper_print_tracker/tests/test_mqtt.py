@@ -64,7 +64,7 @@ def test_states_are_small(tmp_path):
     db = Database(tmp_path / "t.db")
     for i in range(30):
         db.save_job(record(f"{i:06}", end=1000.0 + i))
-    payloads = mqtt.state_payloads(db, LINKS)
+    payloads = mqtt.state_payloads(db, LINKS, OPTIONS)
     recent = payloads[mqtt.TOPICS["recent"]]
     assert recent["count"] == 30 and len(recent["jobs"]) == 10
     assert all(len(json.dumps(p)) < 16384 for p in payloads.values())

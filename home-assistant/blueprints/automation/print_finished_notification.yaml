@@ -1,0 +1,131 @@
+blueprint:
+  name: Print Tracker - print finished notification
+  description: >-
+    Phone notification when the Print Tracker add-on finishes a print: status, parts,
+    time, filament, energy, cost and changed settings. Tapping it opens the print's page.
+  domain: automation
+  source_url: https://github.com/currentlib/KlipperPrintTracker/blob/main/home-assistant/blueprints/automation/print_finished_notification.yaml
+  input:
+    event_entity:
+      name: Print finished event
+      description: The event entity of the add-on.
+      default: event.print_tracker_print_finished
+      selector:
+        entity:
+          filter:
+            - domain: event
+              integration: mqtt
+    notify_device:
+      name: Device to notify
+      description: A phone with the Home Assistant Companion app.
+      selector:
+        device:
+          filter:
+            - integration: mobile_app
+    camera:
+      name: Camera
+      description: Optional camera for a snapshot in the notification.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: camera
+    statuses:
+      name: Statuses
+      description: Which print results to notify about.
+      default:
+        - completed
+        - cancelled
+        - error
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Completed
+              value: completed
+            - label: Cancelled
+              value: cancelled
+            - label: Error
+              value: error
+    include_changes:
+      name: Include settings changes
+      description: Add a line with the settings changed since the previous print.
+      default: true
+      selector:
+        boolean:
+
+mode: queued
+max: 10
+
+triggers:
+  - trigger: state
+    entity_id: !input event_entity
+    not_from: unavailable
+    not_to:
+      - unavailable
+      - unknown
+
+variables:
+  camera: !input camera
+  statuses: !input statuses
+  include_changes: !input include_changes
+  job: "{{ dict(trigger.to_state.attributes) }}"
+  status: "{{ job.event_type }}"
+  notification_title: >-
+    {{ {'completed': '✅ Друк завершено',
+        'cancelled': '⏹️ Друк скасовано',
+        'error': '❌ Помилка друку'}[status] }}
+  notification_message: |-
+    {%- set minutes = job.minutes | int(0) -%}
+    {%- set h = minutes // 60 -%}
+    {%- set mm = minutes % 60 -%}
+    {%- set parts = job.parts | int(0) -%}
+    {%- set planned = job.planned | int(0) -%}
+    {%- set per_part = job.cost_per_part | float(0) -%}
+    {{ job.file }}
+
+    {% if status == 'completed' -%}
+      {%- if planned > 0 and job.excluded -%}
+    Надруковано {{ parts }} з {{ planned }} деталей, виключено: {{ job.excluded }}
+      {%- elif parts > 0 -%}
+    Надруковано {{ parts }} {{ 'деталь' if parts == 1 else ('деталі' if parts < 5 else 'деталей') }}
+      {%- endif -%}
+    {%- else -%}
+    Зупинено через {{ h }} год {{ mm }} хв
+    {%- endif %}
+
+    ⏱️ {{ h }} год {{ mm }} хв · 🧵 {{ job.grams }} г{% if job.kwh is not none %} · ⚡ {{ job.kwh }} кВт·год{% endif %}
+    💸 {{ job.cost }} {{ job.currency }}{% if per_part > 0 %} ({{ per_part }} {{ job.currency }}/шт){% endif %}
+    {%- if include_changes and job.changed_settings %}
+    ⚙️ Змінено з минулого друку: {{ job.changed_settings | join(', ') }}
+    {%- endif %}
+
+conditions:
+  - condition: template
+    value_template: "{{ status in statuses }}"
+
+actions:
+  - if:
+      - condition: template
+        value_template: "{{ camera | length > 0 }}"
+    then:
+      - domain: mobile_app
+        type: notify
+        device_id: !input notify_device
+        title: "{{ notification_title }}"
+        message: "{{ notification_message }}"
+        data:
+          url: "{{ job.url }}"
+          clickAction: "{{ job.url }}"
+          tag: print_tracker
+          image: "/api/camera_proxy/{{ camera }}"
+    else:
+      - domain: mobile_app
+        type: notify
+        device_id: !input notify_device
+        title: "{{ notification_title }}"
+        message: "{{ notification_message }}"
+        data:
+          url: "{{ job.url }}"
+          clickAction: "{{ job.url }}"
+          tag: print_tracker

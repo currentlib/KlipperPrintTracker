@@ -1,4 +1,10 @@
 # =====================================================================
+#  FROZEN: YAML-only edition for Home Assistant installations without add-ons.
+#  The add-on (klipper_print_tracker/) is the recommended edition, this file
+#  is not developed further.
+# =====================================================================
+
+# =====================================================================
 #  Print Tracker - облік 3D-друку для Home Assistant (package)
 #  Частина проєкту KlipperPrintTracker, версія для Home Assistant.
 #  Нічого не треба ставити на принтер і в слайсер: HA сам питає Moonraker
