@@ -364,13 +364,11 @@ views:
               - entity: sensor.printer_plug_power
                 name: Потужність
           - type: tile
-            entity: sensor.printer_active_spool
-            name: Активна котушка
+            entity: sensor.print_tracker_last_print
+            name: Котушка останнього друку
             icon: mdi:printer-3d-nozzle
             color: grey
-            state_content:
-              - spool_name
-              - state
+            state_content: spool
             grid_options:
               columns: full
           - type: heading

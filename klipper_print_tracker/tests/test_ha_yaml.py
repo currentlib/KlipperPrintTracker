@@ -179,6 +179,7 @@ def test_dashboard_has_no_replaced_helpers():
     text = DASHBOARD.read_text(encoding="utf-8")
     assert "input_number." not in text and "input_boolean." not in text
     assert "'sensor.print_tracker'" not in text and "sensor.print_tracker\n" not in text
+    assert "sensor.printer_active_spool" not in text and "print_tracker_live" not in text
 
 
 def test_lite_is_marked_frozen():
