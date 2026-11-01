@@ -1,0 +1,520 @@
+# =====================================================================
+#  Дашборд 3D-принтера (KlipperPrintTracker, версія для Home Assistant)
+#  View типу "sections", лише стандартні картки.
+#
+#  Вставити: Settings -> Dashboards -> Add dashboard -> відкрити ->
+#  олівець -> три крапки -> Raw configuration editor.
+#
+#  Потрібні packages print_tracker.yaml і printer_extras.yaml.
+#  Плейсхолдери: my_printer, switch.printer_plug, sensor.printer_plug_power,
+#  sensor.printer_plug_energy_today.
+#  chamber_temp і mcu_temp є не на всіх принтерах - прибери, якщо немає.
+# =====================================================================
+
+title: 3D Print
+views:
+  - title: Принтер
+    path: printer
+    icon: mdi:printer-3d-nozzle
+    type: sections
+    max_columns: 3
+    badges:
+      - type: entity
+        entity: sensor.my_printer_current_print_state
+        name: Стан
+        show_name: true
+        icon: mdi:printer-3d
+      - type: entity
+        entity: sensor.my_printer_progress
+        name: Прогрес
+        show_name: true
+        icon: mdi:progress-clock
+        visibility:
+          - condition: state
+            entity: sensor.my_printer_current_print_state
+            state:
+              - printing
+              - paused
+      - type: entity
+        entity: sensor.my_printer_print_eta
+        name: Готово о
+        show_name: true
+        icon: mdi:clock-check-outline
+        visibility:
+          - condition: state
+            entity: sensor.my_printer_current_print_state
+            state: printing
+      - type: entity
+        entity: switch.printer_plug
+        name: Живлення
+        show_name: true
+        icon: mdi:power-plug
+      - type: entity
+        entity: sensor.printer_plug_power
+        name: Споживання
+        show_name: true
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Поточний друк
+            icon: mdi:printer-3d-nozzle
+          - type: picture-entity
+            entity: camera.my_printer_webcam
+            camera_view: live
+            show_name: false
+            show_state: false
+            grid_options:
+              columns: full
+          - type: markdown
+            grid_options:
+              columns: full
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state:
+                  - printing
+                  - paused
+            content: >-
+              {% set p = states('sensor.my_printer_progress') | float(0) %} {%
+              set n = (p / 5) | round(0, 'floor') | int %} {% set st =
+              states('sensor.my_printer_current_print_state') %} {% set eta =
+              states('sensor.my_printer_print_eta') %}
+
+              ### {{ '⏸️' if st == 'paused' else '🖨️' }} {{
+              states('sensor.my_printer_filename') | replace('.gcode', '') }}
+
+              `{{ '█' * n }}{{ '░' * (20 - n) }}` **{{ p | round(1) }}%**
+
+
+              Шар **{{ states('sensor.my_printer_current_layer') }}** з {{
+              states('sensor.my_printer_total_layer') }}
+
+              {% if st == 'paused' %} ⚠️ **Друк на паузі** {% elif eta not in
+              ['unknown', 'unavailable', 'none', ''] %} {% set left =
+              ((as_timestamp(eta) - now().timestamp()) / 60) | int %} {% if left
+              > 0 %} ⏱️ Залишилось **{{ left // 60 }} год {{ left % 60 }} хв** ·
+              готово о **{{ as_timestamp(eta) | timestamp_custom('%H:%M') }}**
+              {% endif %} {% endif %}
+          - type: markdown
+            grid_options:
+              columns: full
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state: complete
+            content: >-
+              {% set done =
+              states.sensor.my_printer_current_print_state.last_changed %} {%
+              set mins = ((now() - done).total_seconds() / 60) | int %} {% set
+              fan_delay = 5 %} {% set sleep_delay = 10 %}
+
+              ### ✅ Друк завершено
+
+              **{{ states('sensor.my_printer_filename') | replace('.gcode',
+              '') }}**
+
+              Завершено о {{ done | as_local | as_timestamp |
+              timestamp_custom('%H:%M') }}
+
+              {% if mins < fan_delay and
+              is_state('automation.printer_turn_off_fans', 'on') %}
+              🌀 Кулери вимкнуться через **{{ fan_delay - mins }} хв** {% endif
+              %}
+
+              {% if is_state('switch.printer_plug', 'on') and mins < sleep_delay and
+              is_state('automation.printer_sleep', 'on') %} 🔌 Розетка
+              вимкнеться приблизно через **{{ sleep_delay - mins }} хв** {% elif
+              is_state('switch.printer_plug', 'on') and
+              is_state('automation.printer_sleep', 'off') %} 🔌 Автовимкнення
+              розетки вимкнене, принтер лишиться під живленням {% elif
+              is_state('switch.printer_plug', 'off') %} 🔌 Принтер вимкнено {% endif
+              %}
+          - type: markdown
+            grid_options:
+              columns: full
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state_not:
+                  - printing
+                  - paused
+                  - complete
+            content: >-
+              ### 💤 Принтер вільний
+
+              Стан: **{{ states('sensor.my_printer_printer_state') }}**
+
+              Останній файл: {{ states('sensor.my_printer_filename') |
+              replace('.gcode', '') }}
+          - type: tile
+            entity: script.printer_preheat
+            name: Прогрів 150/70
+            icon: mdi:fire
+            color: deep-orange
+            vertical: true
+            hide_state: true
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.printer_preheat
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state_not: printing
+          - type: tile
+            entity: script.printer_cooldown
+            name: Охолодити
+            icon: mdi:snowflake
+            color: light-blue
+            vertical: true
+            hide_state: true
+            tap_action:
+              action: perform-action
+              perform_action: script.turn_on
+              target:
+                entity_id: script.printer_cooldown
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state_not: printing
+          - type: tile
+            entity: button.my_printer_pause_print
+            name: Пауза
+            icon: mdi:pause
+            color: amber
+            vertical: true
+            hide_state: true
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.my_printer_pause_print
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state: printing
+          - type: tile
+            entity: button.my_printer_resume_print
+            name: Продовжити
+            icon: mdi:play
+            color: green
+            vertical: true
+            hide_state: true
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.my_printer_resume_print
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state: paused
+          - type: tile
+            entity: button.my_printer_cancel_print
+            name: Скасувати
+            icon: mdi:stop
+            color: red
+            vertical: true
+            hide_state: true
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.my_printer_cancel_print
+              confirmation:
+                text: Точно скасувати друк? Це не можна відмінити.
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state:
+                  - printing
+                  - paused
+          - type: tile
+            entity: sensor.my_printer_print_duration
+            name: Друкується
+            icon: mdi:timer-outline
+            vertical: true
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state:
+                  - printing
+                  - paused
+          - type: tile
+            entity: sensor.my_printer_filament_used
+            name: Витрачено пластику
+            icon: mdi:printer-3d-nozzle-outline
+            vertical: true
+            visibility:
+              - condition: state
+                entity: sensor.my_printer_current_print_state
+                state:
+                  - printing
+                  - paused
+      - type: grid
+        cards:
+          - type: heading
+            heading: Температури
+            icon: mdi:thermometer
+            badges:
+              - type: entity
+                entity: sensor.my_printer_chamber_temp
+                show_icon: true
+                icon: mdi:home-thermometer-outline
+              - type: entity
+                entity: sensor.my_printer_mcu_temp
+                show_icon: true
+                icon: mdi:chip
+          - type: gauge
+            entity: sensor.my_printer_extruder_temperature
+            name: Сопло
+            min: 0
+            max: 300
+            needle: true
+            severity:
+              green: 0
+              yellow: 170
+              red: 260
+          - type: gauge
+            entity: sensor.my_printer_bed_temperature
+            name: Стіл
+            min: 0
+            max: 110
+            needle: true
+            severity:
+              green: 0
+              yellow: 45
+              red: 95
+          - type: tile
+            entity: number.my_printer_extruder_target
+            name: Ціль сопла
+            icon: mdi:target
+            color: deep-orange
+            features:
+              - type: numeric-input
+                style: buttons
+          - type: tile
+            entity: number.my_printer_bed_target
+            name: Ціль столу
+            icon: mdi:target
+            color: orange
+            features:
+              - type: numeric-input
+                style: buttons
+          - type: history-graph
+            title: Останні 2 години
+            hours_to_show: 2
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.my_printer_extruder_temperature
+                name: Сопло
+              - entity: number.my_printer_extruder_target
+                name: Сопло ціль
+              - entity: sensor.my_printer_bed_temperature
+                name: Стіл
+              - entity: number.my_printer_bed_target
+                name: Стіл ціль
+              - entity: sensor.my_printer_chamber_temp
+                name: Камера
+      - type: grid
+        cards:
+          - type: heading
+            heading: Живлення і пластик
+            icon: mdi:lightning-bolt
+          - type: tile
+            entity: switch.printer_plug
+            name: Розетка принтера
+            icon: mdi:power-socket-eu
+            color: amber
+            tap_action:
+              action: toggle
+              confirmation:
+                text: Перемкнути живлення принтера? Якщо йде друк, він обірветься.
+            grid_options:
+              columns: full
+          - type: tile
+            entity: sensor.printer_plug_power
+            name: Зараз
+            icon: mdi:flash
+          - type: tile
+            entity: sensor.printer_plug_energy_today
+            name: Сьогодні
+            icon: mdi:counter
+          - type: markdown
+            title: Вартість
+            content: >-
+              {% set tariff = states('input_number.print_tracker_tariff') |
+              float(0) or 4.32 %} {% set kwh =
+              states('sensor.printer_plug_energy_today') | float(0) %} 💸 Сьогодні:
+              **{{ (kwh * tariff) | round(2) }} грн** ({{ kwh }} кВт·год)
+            grid_options:
+              columns: full
+          - type: history-graph
+            title: Споживання за добу
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.printer_plug_power
+                name: Потужність
+          - type: tile
+            entity: sensor.printer_active_spool
+            name: Активна котушка
+            icon: mdi:printer-3d-nozzle
+            color: grey
+            state_content:
+              - spool_name
+              - state
+            grid_options:
+              columns: full
+          - type: heading
+            heading: Автоматизації
+            heading_style: subtitle
+            icon: mdi:robot-outline
+          - type: tile
+            entity: automation.printer_sleep
+            name: Автовимкнення розетки
+            icon: mdi:power-sleep
+            color: indigo
+            features:
+              - type: toggle
+          - type: tile
+            entity: automation.printer_turn_off_fans
+            name: Вимкнення кулерів
+            icon: mdi:fan-off
+            color: indigo
+            features:
+              - type: toggle
+          - type: tile
+            entity: button.my_printer_emergency_stop
+            name: АВАРІЙНА ЗУПИНКА
+            icon: mdi:alert-octagon
+            color: red
+            hide_state: true
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.my_printer_emergency_stop
+              confirmation:
+                text: >-
+                  Аварійна зупинка Klipper. Друк буде втрачено, потрібен
+                  FIRMWARE_RESTART. Продовжити?
+            grid_options:
+              columns: full
+      # =================================================================
+      #  СЕКЦІЯ 4: Історія друку (потрібен package print_tracker.yaml)
+      # =================================================================
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Історія друку
+            icon: mdi:history
+            badges:
+              - type: entity
+                entity: sensor.print_tracker
+                show_icon: true
+                icon: mdi:counter
+
+          # --- Загальна статистика ---
+          - type: markdown
+            grid_options:
+              columns: full
+            content: |-
+              {%- set e = 'sensor.print_tracker' -%}
+              {%- set t = state_attr(e, 'total_jobs') or 0 -%}
+              {%- if t == 0 -%}
+              Ще немає жодного запису. Історія зʼявиться після першого завершеного друку.
+              {%- else -%}
+              | 🖨️ Друків | ✅ Успішних | ⏹️ Скасовано | ❌ Помилок | 🎯 Надійність |
+              |:-:|:-:|:-:|:-:|:-:|
+              | **{{ t }}** | {{ state_attr(e, 'completed') }} | {{ state_attr(e, 'cancelled') }} | {{ state_attr(e, 'failed') }} | **{{ state_attr(e, 'success_rate') }}%** |
+
+              🧩 Деталей: **{{ state_attr(e, 'total_parts') }}** · 🧵 Пластику: **{{ ((state_attr(e, 'total_grams') or 0) / 1000) | round(2) }} кг** · ⚡ Енергії: **{{ state_attr(e, 'total_kwh') }} кВт·год**
+
+              💸 Всього витрачено: **{{ state_attr(e, 'total_cost') }} грн**, з них на невдалі друки: **{{ state_attr(e, 'wasted_cost') }} грн**
+              {%- endif -%}
+
+          # --- Останні друки ---
+          - type: markdown
+            title: Останні друки
+            grid_options:
+              columns: full
+            content: |-
+              {%- set jobs = state_attr('sensor.print_tracker', 'jobs') or [] -%}
+              {%- set icon = {'completed': '✅', 'cancelled': '⏹️', 'error': '❌'} -%}
+              {%- if jobs | count == 0 -%}
+              Поки порожньо.
+              {%- else -%}
+              | | Коли | Файл | Деталі | Час | г | грн | грн/шт | Котушка |
+              |:-:|:--|:--|:-:|--:|--:|--:|--:|:--|
+              {%- for j in jobs %}
+              | {{ icon.get(j.status, '❔') }} | {{ j.date }} | {{ j.file | truncate(28, true, '…') }} | {{ j.parts }}{% if j.planned %}/{{ j.planned }}{% endif %}{% if j.excluded %} ⚠️{% endif %} | {{ j.minutes // 60 }}:{{ '%02d' | format(j.minutes % 60) }} | {{ j.grams }} | {{ j.cost }} | {{ j.per_part if j.per_part else '-' }} | {{ j.spool | truncate(20, true, '…') }} |
+              {%- endfor %}
+
+              ⚠️ - частину деталей виключено під час друку
+              {%- endif -%}
+
+          # --- Лічильники по деталях ---
+          - type: markdown
+            title: Надруковано деталей
+            grid_options:
+              columns: 6
+            content: |-
+              {%- set d = state_attr('sensor.print_tracker', 'object_totals') or {} -%}
+              {%- if d | count == 0 -%}
+              Поки порожньо.
+              {%- else -%}
+              | Деталь | Шт |
+              |:--|--:|
+              {%- for k, v in (d.items() | sort(attribute='1', reverse=true))[:20] %}
+              | {{ k }} | **{{ v }}** |
+              {%- endfor %}
+              {%- endif -%}
+
+          # --- Найчастіше виключені ---
+          - type: markdown
+            title: Найчастіше виключені
+            grid_options:
+              columns: 6
+            content: |-
+              {%- set d = state_attr('sensor.print_tracker', 'excluded_totals') or {} -%}
+              {%- set ok = state_attr('sensor.print_tracker', 'object_totals') or {} -%}
+              {%- if d | count == 0 -%}
+              Жодна деталь ще не виключалась 🎉
+              {%- else -%}
+              | Деталь | Виключено | % від спроб |
+              |:--|--:|--:|
+              {%- for k, v in (d.items() | sort(attribute='1', reverse=true))[:10] %}
+              | {{ k }} | **{{ v }}** | {{ (100 * v / (v + ok.get(k, 0))) | round(0) | int }}% |
+              {%- endfor %}
+              {%- endif -%}
+
+          # --- Налаштування трекера ---
+          - type: tile
+            entity: input_number.print_tracker_tariff
+            name: Тариф
+            icon: mdi:cash
+            color: green
+            features:
+              - type: numeric-input
+                style: buttons
+          - type: tile
+            entity: input_number.print_tracker_filament_price
+            name: Ціна пластику (якщо немає в Spoolman)
+            icon: mdi:printer-3d-nozzle
+            color: green
+            features:
+              - type: numeric-input
+                style: buttons
+          - type: tile
+            entity: input_boolean.print_tracker_gsheets
+            name: Писати в Google Sheets
+            icon: mdi:google-spreadsheet
+            color: green
+            features:
+              - type: toggle
