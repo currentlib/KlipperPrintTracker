@@ -78,9 +78,11 @@ window.UI = (() => {
     `<div class="skeleton-row"><span class="skeleton" style="width:40px;height:40px;border-radius:8px"></span>
      ${skeletonLine("24%")}${skeletonLine("32%")}${skeletonLine("12%")}</div>`).join(""));
 
+  const statusIconName = (value) => (STATUS[value] || STATUS.error)[0];
+  const statusVariable = (value) => (STATUS[value] || STATUS.error)[1];
   const setCurrency = (value) => { currency = value; };
   return {
-    e, icon, number, money, percent, kwh, grams, duration, date, status, statusBadge, statusIcon, statusLabel, heading,
+    statusIconName, statusVariable, e, icon, number, money, percent, kwh, grams, duration, date, status, statusBadge, statusIcon, statusLabel, heading,
     section, card, tile, badge, empty, thumb, skeletonTile, skeletonRows, setCurrency,
   };
 })();

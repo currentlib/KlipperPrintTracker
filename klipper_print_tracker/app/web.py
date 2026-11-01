@@ -81,6 +81,7 @@ async def health(request):
 def _row(record: dict, links) -> dict:
     row = summary.recent_row(record, links)
     return {**row, "job_id": record["job_id"], "file": summary.display_name(record.get("filename")),
+            "end_time": record.get("end_time"),
             "thumbnail": record.get("thumbnail") and f"thumbs/{record['thumbnail']}",
             "changed": len(short_changes(record)), "kwh": record.get("kwh"),
             "live_data": bool(record.get("live_data")), "spool": record.get("spool") or "",
@@ -91,7 +92,7 @@ async def stats(request):
     s = _services(request)
     recent, _ = s.db.jobs(limit=10)
     return web.json_response({
-        **s.db.stats(), "currency": s.options.currency,
+        **s.db.stats(), "currency": summary.display_currency(s.options.currency),
         "recent": [_row(j, s.links) for j in recent],
         "top_parts": s.db.top_parts(), "top_excluded": s.db.top_excluded()})
 
@@ -122,9 +123,11 @@ def _int(request, name: str, default: int) -> int:
 async def jobs(request):
     s = _services(request)
     rows, total = s.db.jobs(**_filters(request), limit=min(_int(request, "limit", 50), MAX_PAGE),
-                            offset=_int(request, "offset", 0))
+                            offset=_int(request, "offset", 0), sort=request.query.get("sort", "date"),
+                            descending=request.query.get("dir", "desc") != "asc")
     return web.json_response({"jobs": [_row(j, s.links) for j in rows], "total": total,
-                              "facets": s.db.facets(), "currency": s.options.currency})
+                              "facets": s.db.facets(),
+                              "currency": summary.display_currency(s.options.currency)})
 
 
 def _csv_cell(value):
@@ -167,7 +170,7 @@ async def job(request):
                          "file": summary.display_name(other["filename"]) if other else None}
     drift = {name: views.labelled_diff(diff, layout) for name, diff in (record.get("preset_drift") or {}).items()}
     return web.json_response({
-        **_row(record, s.links), "currency": s.options.currency,
+        **_row(record, s.links), "currency": summary.display_currency(s.options.currency),
         "filename": record["filename"], "printed": record["printed"], "excluded": record["excluded"],
         "filament_mm": record["filament_mm"], "energy_cost": record["energy_cost"],
         "filament_cost": record["filament_cost"], "total_cost": record["total_cost"],
@@ -208,7 +211,8 @@ async def part(request):
     excluded = sum(r["part_excluded"] for r in rows)
     attempts = printed + excluded
     return web.json_response({
-        "name": name, "printed": printed, "excluded": excluded, "currency": s.options.currency,
+        "name": name, "printed": printed, "excluded": excluded,
+        "currency": summary.display_currency(s.options.currency),
         "success_rate": round(100 * printed / attempts, 1) if attempts else 0, "jobs": rows})
 
 

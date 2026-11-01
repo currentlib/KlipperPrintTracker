@@ -7,6 +7,9 @@ import zlib
 from pathlib import Path
 
 JSON_COLUMNS = ("printed", "excluded", "presets", "changes", "preset_drift")
+SORT_COLUMNS = {"date": "end_time", "file": "filename", "status": "status", "parts": "parts",
+                "minutes": "print_duration", "grams": "grams", "cost": "total_cost",
+                "per_part": "per_part", "spool": "spool"}
 JOB_COLUMNS = (
     "job_id", "filename", "status", "start_time", "end_time", "print_duration",
     "planned", "parts", "printed", "excluded", "filament_mm", "grams", "kwh",
@@ -108,7 +111,7 @@ class Database:
         return self._job(rows[0]) if rows else None
 
     def jobs(self, file=None, status=None, preset=None, spool=None, date_from=None,
-             date_to=None, limit=100, offset=0) -> tuple[list[dict], int]:
+             date_to=None, limit=100, offset=0, sort="date", descending=True) -> tuple[list[dict], int]:
         where, params = [], []
         if file:
             where.append("filename LIKE ?")
@@ -130,7 +133,8 @@ class Database:
             params.append(date_to)
         clause = f"WHERE {' AND '.join(where)}" if where else ""
         total = self._query(f"SELECT COUNT(*) n FROM jobs {clause}", params)[0]["n"]
-        rows = self._query(f"SELECT * FROM jobs {clause} ORDER BY end_time DESC LIMIT ? OFFSET ?",
+        order = f"{SORT_COLUMNS.get(sort, 'end_time')} {'DESC' if descending else 'ASC'}"
+        rows = self._query(f"SELECT * FROM jobs {clause} ORDER BY {order}, end_time DESC LIMIT ? OFFSET ?",
                            [*params, limit, offset])
         return [self._job(r) for r in rows], total
 
