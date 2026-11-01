@@ -62,7 +62,7 @@ class Moonraker:
     async def _on_connect(self):
         try:
             await self._call("server.connection.identify", {
-                "client_name": "KlipperPrintTracker", "version": "0.2.0",
+                "client_name": "KlipperPrintTracker", "version": "0.3.0",
                 "type": "other", "url": "https://github.com/currentlib/KlipperPrintTracker",
             })
         except RuntimeError as err:

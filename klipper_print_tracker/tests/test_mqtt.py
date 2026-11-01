@@ -10,7 +10,7 @@ from app.db import Database
 from app.links import Links
 from app import mqtt
 
-OPTIONS = Options(printer_name="K1C", currency="UAH")
+OPTIONS = Options(printer_name="K1C", currency="UAH", moonraker_url="http://printer.example:7125")
 LINKS = Links("abcd1234_klipper_print_tracker", "http://pi.example:8100")
 
 
@@ -24,9 +24,9 @@ def record(job_id="000001", status="completed", end=1000.0, **extra):
 
 
 def test_discovery_covers_the_entity_table():
-    topics = mqtt.discovery(OPTIONS)
+    topics = mqtt.scope_discovery(mqtt.Scope(), OPTIONS)
     ids = {t.split("/")[1] + "." + t.split("/")[2].removeprefix("klipper_print_tracker_") for t in topics}
-    assert ids == {f"sensor.{k}" for k in (
+    assert ids >= {f"sensor.{k}" for k in (
         "total_prints", "success_rate", "parts_printed", "filament_used", "energy_used", "total_cost",
         "last_print", "recent_prints", "top_parts", "current_print_parts")} | {
         "event.print_finished", "button.rescan_history"}
@@ -34,13 +34,16 @@ def test_discovery_covers_the_entity_table():
 
 def test_discovery_schema():
     for topic, payload in mqtt.discovery(OPTIONS).items():
+        if "_printer1_" in topic:
+            continue
         component, unique_id = topic.split("/")[1:3]
         assert topic == f"homeassistant/{component}/{unique_id}/config"
         assert payload["unique_id"] == unique_id
         assert payload["device"]["identifiers"] == ["klipper_print_tracker"]
-        assert payload["device"]["name"] == "Print Tracker (K1C)"
+        assert payload["device"]["name"] == "Print Tracker"
         assert payload["default_entity_id"].startswith(f"{component}.print_tracker_")
         assert "availability_topic" in payload or "availability" in payload
+        assert not ("availability_topic" in payload and "availability" in payload)
         if component == "button":
             assert payload["command_topic"]
         else:
@@ -49,7 +52,7 @@ def test_discovery_schema():
 
 def test_event_entity_schema():
     event = mqtt.discovery(OPTIONS)["homeassistant/event/klipper_print_tracker_print_finished/config"]
-    assert event["event_types"] == ["completed", "cancelled", "error"]
+    assert event["event_types"] == ["completed", "cancelled", "error", "rated"]
 
 
 def test_cost_units_and_current_availability():
@@ -71,8 +74,8 @@ def test_states_are_small(tmp_path):
     last = payloads[mqtt.TOPICS["last_print"]]
     assert last["job_id"] == "000029" and last["file"] == "plate"
     assert last["changed_settings"] == ["flow_ratio"]
-    assert last["url"] == "/app/abcd1234_klipper_print_tracker/job/000029"
-    assert last["direct_url"] == "http://pi.example:8100/#/job/000029"
+    assert last["url"] == "/app/abcd1234_klipper_print_tracker/job/printer1:000029"
+    assert last["direct_url"] == "http://pi.example:8100/#/job/printer1:000029"
     db.close()
 
 
@@ -109,7 +112,8 @@ async def collect(port, topic, until, timeout=4):
 
 async def test_full_flow_against_a_broker(tmp_path, broker):
     db = Database(tmp_path / "t.db")
-    options = Options(printer_name="K1C", mqtt_host="127.0.0.1", mqtt_port=broker)
+    options = Options(printer_name="K1C", mqtt_host="127.0.0.1", mqtt_port=broker,
+                      moonraker_url="http://printer.example:7125")
     rescans = []
 
     async def rescan():
@@ -125,7 +129,7 @@ async def test_full_flow_against_a_broker(tmp_path, broker):
             break
         await asyncio.sleep(0.01)
     await asyncio.sleep(0.1)
-    await publisher.current({"filename": "a.gcode", "objects": ["A", "B"], "excluded": ["B"]})
+    await publisher.current("printer1", {"filename": "a.gcode", "objects": ["A", "B"], "excluded": ["B"]})
     db.save_job(record())
     await publisher.job_finished(db.get_job("000001"))
     received = await listener
@@ -136,6 +140,7 @@ async def test_full_flow_against_a_broker(tmp_path, broker):
     assert event["event_type"] == "completed" and event["job_id"] == "000001"
     assert json.loads(received[mqtt.TOPICS["stats"]])["total"] == 1
     assert "homeassistant/event/klipper_print_tracker_print_finished/config" in received
+    assert "homeassistant/event/klipper_print_tracker_printer1_print_finished/config" in received
     assert db.pending_events() == []
 
     async with aiomqtt.Client("127.0.0.1", broker) as client:

@@ -25,7 +25,7 @@ def test_sheet_row_columns():
                          "Minutes", "Grams", "Spool", "kWh", "Energy cost", "Filament cost", "Total",
                          "Cost per part", "Job ID", "Link", "Changed settings"]
     assert row["Printed per part"] == "Bracket x3, Clip x1"
-    assert row["Link"] == "https://ha.example/app/slug_x/job/000001"
+    assert row["Link"] == "https://ha.example/app/slug_x/job/printer1:000001"
     assert row["kWh"] == "" and row["Minutes"] == 61
 
 

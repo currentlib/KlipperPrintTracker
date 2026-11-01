@@ -12,7 +12,7 @@ class GoogleSheets:
         self.supervisor = supervisor
         self.links = links
 
-    async def current(self, active):
+    async def current(self, printer_id, active):
         pass
 
     async def job_finished(self, record: dict):

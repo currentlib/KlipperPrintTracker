@@ -9,6 +9,7 @@ from posixpath import dirname, join
 import aiohttp
 
 from . import calc, gcode
+from .config import DEFAULT_PRINTER
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +57,17 @@ def _clip(value: str | None) -> str:
     return text if len(text) <= VALUE_WIDTH else text[:VALUE_WIDTH - 3] + "..."
 
 
+def migrate_git_layout(data_dir: Path):
+    """Pre-0.3 kept one repository in git/, printers now have one each. History moves along."""
+    root = Path(data_dir) / "git"
+    if not (root / ".git").exists():
+        return
+    moving = root.with_name("git.moving")
+    root.rename(moving)
+    root.mkdir()
+    moving.rename(root / DEFAULT_PRINTER)
+
+
 class GitHistory:
     """A normal repository, one commit per job when the effective config changed."""
 
@@ -70,6 +82,9 @@ class GitHistory:
 
     def init(self):
         self.path.mkdir(parents=True, exist_ok=True)
+        moving = self.path.parent.with_name("git.moving")
+        if moving.exists() and not self.path.joinpath(".git").exists():
+            moving.rename(self.path)
         if not (self.path / ".git").exists():
             self._git("init", "-q")
 
@@ -112,12 +127,13 @@ class GitHistory:
 
 
 class SettingsHistory:
-    def __init__(self, db, moonraker, layouts, data_dir: Path):
+    def __init__(self, db, moonraker, layouts, data_dir: Path, printer_id: str = DEFAULT_PRINTER):
         self.db = db
         self.moonraker = moonraker
         self.layouts = layouts
+        self.printer_id = printer_id
         self.thumbs = Path(data_dir) / "thumbs"
-        self.git = GitHistory(Path(data_dir) / "git")
+        self.git = GitHistory(Path(data_dir) / "git" / printer_id)
 
     async def snapshot(self, record: dict):
         """Fill the settings fields of a record. Missing data never stops tracking."""
@@ -187,10 +203,10 @@ class SettingsHistory:
 
     def _changes(self, record: dict, config: dict) -> dict:
         end = record.get("end_time") or 0
-        candidates = {"file": self.db.previous_by_file(record["filename"], end)}
+        candidates = {"file": self.db.previous_by_file(record["filename"], end, self.printer_id)}
         for kind in ("process", "filament"):
             names = record["presets"].get(kind) or []
-            candidates[kind] = self.db.previous_by_preset(kind, names[0], end) if names else None
+            candidates[kind] = self.db.previous_by_preset(kind, names[0], end, self.printer_id) if names else None
         changes = {}
         for kind, previous in candidates.items():
             if previous:
@@ -216,6 +232,6 @@ class SettingsHistory:
         if not content:
             return None
         self.thumbs.mkdir(parents=True, exist_ok=True)
-        name = f"{sanitise(str(record['job_id']))}.png"
+        name = f"{self.printer_id}_{sanitise(str(record['job_id']))}.png"
         (self.thumbs / name).write_bytes(content)
         return name

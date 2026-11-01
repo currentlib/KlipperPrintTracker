@@ -14,6 +14,24 @@ const api = async (path) => {
   return response.json();
 };
 
+// The selected printer is a viewer's convenience, storage can be unavailable.
+let printers = [];
+let printer = "";
+try {
+  printer = localStorage.getItem("printer") || "";
+} catch (error) {
+  // Keeps the default, all printers.
+}
+const scoped = (path) => (printer ? `${path}${path.includes("?") ? "&" : "?"}printer=${enc(printer)}` : path);
+const printerName = (id) => printers.find((p) => p.id === id)?.name ?? id;
+
+function printerSwitch() {
+  if (printers.length < 2) return "";
+  const items = printers.map((p) => `<option value="${e(p.id)}"${p.id === printer ? " selected" : ""}>${e(p.name)}</option>`);
+  return `<select class="chip ${printer ? "on" : ""}" data-printer aria-label="${S.printer}" title="${S.printer}">
+    <option value="">${S.all_printers}</option>${items.join("")}</select>`;
+}
+
 function setToolbar({ title = S.app_title, back = false, tab = "", actions = "" }) {
   const tabs = [["#/", S.nav_home, "home"], ["#/prints", S.nav_prints, "prints"]]
     .map(([href, label, id]) => `<a href="${href}" class="${id === tab ? "on" : ""}">${label}</a>`).join("");
@@ -21,7 +39,7 @@ function setToolbar({ title = S.app_title, back = false, tab = "", actions = "" 
     ${back ? `<a class="icon-button" href="#/prints" title="${S.back}" aria-label="${S.back}">${icon("arrow-left")}</a>` : ""}
     <div class="toolbar-title ellipsis" title="${e(title)}">${e(title)}</div>
     <nav class="toolbar-tabs">${tabs}</nav>
-    <div class="toolbar-actions">${actions}</div>`;
+    <div class="toolbar-actions">${printerSwitch()}${actions}</div>`;
 }
 
 // --- tables --------------------------------------------------------------
@@ -35,12 +53,13 @@ function partsCell(row) {
 
 function fileCell(row) {
   const changed = row.changed ? `<span class="muted" title="${S.badge_changed}">${icon("tune-variant", "s18")}</span>` : "";
-  return `<div class="file-cell"><a class="ellipsis" href="#/job/${enc(row.job_id)}" title="${e(row.file)}">${e(row.file)}</a>${changed}</div>`;
+  return `<div class="file-cell"><a class="ellipsis" href="#/job/${enc(row.ref)}" title="${e(row.file)}">${e(row.file)}</a>${changed}</div>`;
 }
 
 const JOB_COLUMNS = [
   { label: "", cls: "icon-cell thumb-cell", cell: (j) => thumb(j.thumbnail) },
   { id: "date", label: S.col_date, cls: "nowrap", cell: (j) => UI.date(j.end_time) },
+  { id: "printer", label: S.printer, cls: "nowrap hide-m", cell: (j) => e(printerName(j.printer_id)), multi: true },
   { id: "file", label: S.col_file, cls: "file", cell: fileCell },
   { id: "status", label: S.col_status, cls: "nowrap status-cell", cell: (j) => UI.status(j.status) },
   { id: "parts", label: S.col_parts, cls: "num", cell: partsCell },
@@ -60,9 +79,10 @@ function headerCell(column, sort) {
   return `<th class="${column.cls} ${active ? "sorted" : ""}"><a href="${e(sort.href(column.id, direction))}">${e(column.label)}${arrow}</a></th>`;
 }
 
-function dataTable(columns, rows, sort) {
+function dataTable(allColumns, rows, sort) {
+  const columns = allColumns.filter((c) => !c.multi || (printers.length > 1 && !printer));
   const head = columns.filter((c) => c.cls !== "m-only").map((c) => headerCell(c, sort)).join("");
-  const body = rows.map((row) => `<tr data-href="#/job/${enc(row.job_id)}">
+  const body = rows.map((row) => `<tr data-href="#/job/${enc(row.ref)}">
     ${columns.map((c) => `<td class="${c.cls}">${c.cell(row)}</td>`).join("")}</tr>`).join("");
   return `<table class="table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
@@ -81,8 +101,10 @@ const rescanButton = `<button class="text-button" data-action="rescan">${S.resca
 
 async function home() {
   setToolbar({ tab: "home" });
-  const d = await api("stats");
+  const d = await api(scoped("stats"));
   UI.setCurrency(d.currency);
+  printers = d.printers;
+  setToolbar({ tab: "home" });
   const allPrints = `<a href="#/prints">${S.all_prints}${icon("chevron-right", "s18")}</a>`;
   return [
     section(`${heading("counter", S.stats)}<div class="tiles six">
@@ -144,8 +166,10 @@ async function prints() {
   const limit = Number(params.get("limit")) || PAGE_SIZE;
   const query = apiQuery(params);
   query.set("limit", limit);
-  const d = await api(`jobs?${query}`);
+  const d = await api(scoped(`jobs?${query}`));
   UI.setCurrency(d.currency);
+  printers = d.printers;
+  setToolbar({ tab: "prints", title: S.nav_prints, actions: search + download });
 
   const status = params.get("status");
   const statusChips = ["completed", "cancelled", "error"].map((value) => {
@@ -201,7 +225,7 @@ function tabsHtml(tabs, rowHtml) {
 
 function changeBlock(kind, change) {
   if (!change) return `<div class="diff-title">${S[`vs_${kind}`]}<span class="muted" style="margin-left:auto;font-weight:400">${S.no_baseline}</span></div>`;
-  const link = `<a class="ellipsis" style="margin-left:auto" href="#/job/${enc(change.job_id)}" title="${e(change.file)}">${e(change.file || change.job_id)}</a>`;
+  const link = `<a class="ellipsis" style="margin-left:auto" href="#/job/${enc(change.ref)}" title="${e(change.file)}">${e(change.file || change.ref)}</a>`;
   return `<div class="diff-title">${S[`vs_${kind}`]}${link}</div>
     ${change.diff.length ? change.diff.map((r) => diffRow(r, r.old, r.new)).join("") : `<div class="row muted">${S.no_changes}</div>`}`;
 }
@@ -250,10 +274,10 @@ async function jobPage(id) {
   if (j.config_missing) {
     return header + section(card(empty("image-off-outline", S.config_missing)), "span-all");
   }
-  const others = (await api("jobs?limit=100")).jobs.filter((o) => o.job_id !== j.job_id);
+  const others = (await api("jobs?limit=100")).jobs.filter((o) => o.ref !== j.ref);
   const picker = others.length ? `<div class="card-body"><select class="compare-select" id="compare" aria-label="${S.compare_with}">
     <option value="">${S.compare_with}</option>
-    ${others.map((o) => `<option value="${e(o.job_id)}">${e(UI.date(o.end_time))} · ${e(o.file)}</option>`).join("")}</select></div>` : "";
+    ${others.map((o) => `<option value="${e(o.ref)}">${e(UI.date(o.end_time))} · ${e(o.file)}</option>`).join("")}</select></div>` : "";
   const setting = (r) => tipRow(r, `${rawValue(r)}${unit(r)}`);
   return header
     + section(`${heading("tune-variant", S.presets)}<div class="badges">${presetBadges(j)}</div>`, "span-all")
@@ -268,7 +292,7 @@ async function jobPage(id) {
 async function comparePage(a, b) {
   setToolbar({ back: true, tab: "prints", title: S.compare });
   const d = await api(`compare/${enc(a)}/${enc(b)}`);
-  const side = (j) => tile({ name: j.file, state: UI.date(j.end_time), iconName: UI.statusIconName(j.status), variable: UI.statusVariable(j.status), href: `#/job/${enc(j.job_id)}` });
+  const side = (j) => tile({ name: j.file, state: UI.date(j.end_time), iconName: UI.statusIconName(j.status), variable: UI.statusVariable(j.status), href: `#/job/${enc(j.ref)}` });
   return section(`${heading("compare-horizontal", S.compare)}<div class="tiles">${side(d.a)}${side(d.b)}</div>`, "span-all")
     + section(card(d.tabs.length ? tabsHtml(d.tabs, (r) => diffRow(r, r.a, r.b)) : empty("check-circle", S.compare_same)), "span-all");
 }
@@ -293,7 +317,7 @@ async function partPage(name) {
 async function presetPage(kind, name) {
   setToolbar({ back: true, tab: "prints", title: name });
   const d = await api(`preset/${enc(kind)}/${enc(name)}`);
-  const entry = (t) => card(`<a class="diff-title" href="#/job/${enc(t.job_id)}">
+  const entry = (t) => card(`<a class="diff-title" href="#/job/${enc(t.ref)}">
       ${UI.statusIcon(t.status)}<span class="ellipsis" title="${e(t.file)}">${e(t.file)}</span>
       <span class="muted" style="margin-left:auto;font-weight:400;white-space:nowrap">${e(UI.date(t.end_time))}</span></a>
     ${t.first ? `<div class="row muted">${S.preset_first}</div>` : t.diff.map((r) => diffRow(r, r.old, r.new)).join("")}`);
@@ -361,6 +385,16 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target.dataset.printer !== undefined) {
+    printer = event.target.value;
+    try {
+      localStorage.setItem("printer", printer);
+    } catch (error) {
+      // The choice lasts until the page reloads then.
+    }
+    render();
+    return;
+  }
   if (event.target.dataset.filter) location.hash = listHref({ [event.target.dataset.filter]: event.target.value });
   if (event.target.id === "compare" && event.target.value) {
     const current = location.hash.split("/")[2];

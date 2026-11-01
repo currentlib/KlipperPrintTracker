@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from aiohttp import web  # noqa: E402
 
-from app.config import Options  # noqa: E402
+from app.config import Options, PrinterOptions  # noqa: E402
 from app.db import Database  # noqa: E402
 from app.links import Links  # noqa: E402
 from app.settings_git import SettingsHistory  # noqa: E402
@@ -131,7 +131,9 @@ async def main():
     history = SettingsHistory(db, moonraker, layouts, data)
     if not args.empty:
         await seed(db, history, history.thumbs)
-    services = SimpleNamespace(options=Options(currency="UAH"), db=db, moonraker=moonraker, tracker=Tracker(),
+    tracker = Tracker()
+    tracker.moonraker, tracker.printer = moonraker, PrinterOptions(name="Creality K1C")
+    services = SimpleNamespace(options=Options(currency="UAH"), db=db, trackers={"printer1": tracker},
                                layouts=layouts, links=Links("local_klipper_print_tracker"),
                                thumbs=history.thumbs, mqtt=None)
     app = create_app(services, allowed_peer=None)

@@ -42,13 +42,13 @@ async def test_whole_add_on(tmp_path, monkeypatch):
                     break
                 await asyncio.sleep(0.02)
             assert stats["parts"] == 1 and stats["top_parts"] == [{"name": "Cube", "count": 1}]
-            async with session.get("http://127.0.0.1:8100/api/job/000001") as response:
+            async with session.get("http://127.0.0.1:8100/api/job/printer1:000001") as response:
                 data = await response.json()
             assert data["slicer"] == "OrcaSlicer" and data["commit"]
             assert data["settings"][0]["pages"][0]["title"] == "Якість"
             async with session.get("http://127.0.0.1:8099/api/stats") as response:
                 assert response.status == 403
-        assert (tmp_path / "tracker.db").exists() and (tmp_path / "git" / "effective.ini").exists()
+        assert (tmp_path / "tracker.db").exists() and (tmp_path / "git" / "printer1" / "effective.ini").exists()
     finally:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)

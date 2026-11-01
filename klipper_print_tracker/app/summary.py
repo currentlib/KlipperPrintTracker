@@ -1,6 +1,7 @@
 """Compact job data for entities, events and the spreadsheet."""
 from datetime import datetime
 
+from .config import DEFAULT_PRINTER
 from .settings_git import short_changes
 
 MAX_CHANGED_KEYS = 10
@@ -13,8 +14,10 @@ def display_currency(code: str) -> str:
 
 def job_summary(record: dict, links, currency: str = "") -> dict:
     excluded = record.get("excluded") or {}
+    printer = record.get("printer_id", DEFAULT_PRINTER)
     summary = {
         "job_id": record["job_id"],
+        "printer_id": printer,
         "file": display_name(record.get("filename")),
         "status": record["status"],
         "parts": record.get("parts", 0),
@@ -28,9 +31,9 @@ def job_summary(record: dict, links, currency: str = "") -> dict:
         "currency": currency,
         "spool": record.get("spool"),
         "changed_settings": short_changes(record)[:MAX_CHANGED_KEYS],
-        "url": links.job(record["job_id"]),
+        "url": links.job(record["job_id"], printer),
     }
-    direct = links.direct_job(record["job_id"])
+    direct = links.direct_job(record["job_id"], printer)
     if direct:
         summary["direct_url"] = direct
     return summary
@@ -50,7 +53,7 @@ def recent_row(record: dict, links) -> dict:
         "cost": record.get("total_cost", 0),
         "per_part": record.get("per_part", 0),
         "spool": (record.get("spool") or "")[:24],
-        "url": links.job(record["job_id"]),
+        "url": links.job(record["job_id"], record.get("printer_id", DEFAULT_PRINTER)),
     }
 
 
@@ -83,6 +86,6 @@ def sheet_row(record: dict, links) -> dict:
         "Total": record.get("total_cost", 0),
         "Cost per part": record.get("per_part", 0),
         "Job ID": record["job_id"],
-        "Link": links.absolute_job(record["job_id"]),
+        "Link": links.absolute_job(record["job_id"], record.get("printer_id", DEFAULT_PRINTER)),
         "Changed settings": ", ".join(short_changes(record)),
     }

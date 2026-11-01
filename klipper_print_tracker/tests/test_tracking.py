@@ -27,7 +27,7 @@ class Listener:
         self.finished = []
         self.currents = []
 
-    async def current(self, active):
+    async def current(self, printer_id, active):
         self.currents.append(active)
 
     async def job_finished(self, record):
@@ -253,3 +253,78 @@ async def test_stats_and_tops(rig):
     jobs, total = rig.db.jobs(status="completed", file="plate")
     assert total == 1 and jobs[0]["job_id"] == "000001"
     assert rig.db.jobs(status="error")[1] == 0
+
+
+def test_old_database_is_migrated(tmp_path):
+    import sqlite3
+
+    from app.db import SCHEMA
+    path = tmp_path / "old.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(SCHEMA)
+    conn.execute("INSERT INTO jobs (job_id, filename, status, end_time, printed, excluded) "
+                 "VALUES ('000001', 'a.gcode', 'completed', 5, '{\"Clip\": 1}', '{}')")
+    conn.execute("INSERT INTO job_parts VALUES ('000001', 'Clip', 1, 0)")
+    conn.execute("INSERT INTO job_presets VALUES ('000001', 'process', 'Draft')")
+    conn.execute("INSERT INTO meta VALUES ('active', '{\"filename\": \"b.gcode\"}')")
+    conn.commit()
+    conn.close()
+
+    db = Database(path)
+    assert db.get_job("000001")["printer_id"] == "printer1"
+    assert db.get_active("printer1") == {"filename": "b.gcode"}
+    assert db.top_parts(printer="printer1") == [{"name": "Clip", "count": 1}]
+    assert db.jobs(preset="Draft")[1] == 1
+    assert (tmp_path / "old.db.pre-v2").exists()
+    version = db.conn.execute("PRAGMA user_version").fetchone()[0]
+    db.close()
+
+    again = Database(path)
+    assert again.conn.execute("PRAGMA user_version").fetchone()[0] == version
+    assert again.get_job("000001")["filename"] == "a.gcode"
+    again.close()
+
+
+def test_same_job_id_on_two_printers(tmp_path):
+    db = Database(tmp_path / "t.db")
+    for printer in ("printer1", "printer2"):
+        db.save_job({"printer_id": printer, "job_id": "000001", "filename": printer, "status": "completed",
+                     "end_time": 1.0, "printed": {"Clip": 1}, "parts": 1})
+    assert db.stats()["total"] == 2 and db.stats("printer2")["total"] == 1
+    assert db.get_job("000001", "printer2")["filename"] == "printer2"
+    assert db.top_parts() == [{"name": "Clip", "count": 2}]
+    assert db.top_parts(printer="printer1") == [{"name": "Clip", "count": 1}]
+    db.close()
+
+
+async def test_two_printers_stay_apart(tmp_path, monkeypatch):
+    from app.config import PrinterOptions
+    monkeypatch.setattr(tracker_module, "FINISH_DELAY", 0.01)
+    db = Database(tmp_path / "t.db")
+    fakes = [FakeMoonraker(), FakeMoonraker()]
+    options = Options(default_filament_price=800)
+    async with aiohttp.ClientSession() as session:
+        tasks, trackers = [], []
+        for index, fake in enumerate(fakes):
+            printer = PrinterOptions(f"p{index}", f"P{index}", await fake.start())
+            moonraker = Moonraker(printer.moonraker_url, session)
+            tracker = Tracker(options, db, moonraker, FakeSupervisor(), printer=printer)
+            moonraker.on_status, moonraker.on_history = tracker.on_status, tracker.on_history
+            tasks.append(asyncio.create_task(moonraker.run()))
+            trackers.append(tracker)
+        await settle(lambda: all(t.moonraker.connected for t in trackers))
+        job = await fakes[1].add_job("000001", "second.gcode", metadata=META)
+        await fakes[1].emit({"print_stats": {"state": "printing", "filename": "second.gcode"}})
+        await settle(lambda: trackers[1].active is not None)
+        assert trackers[0].active is None
+        await fakes[0].drop_clients()
+        await fakes[1].finish_job(job, "completed", filament_used=1000)
+        await fakes[1].emit({"print_stats": {"state": "complete"}})
+        await settle(lambda: db.has_job("000001", "p1"))
+        assert not db.has_job("000001", "p0")
+        await settle(lambda: fakes[0].connections == 2, timeout=5)
+        for task in tasks:
+            task.cancel()
+    for fake in fakes:
+        await fake.stop()
+    db.close()

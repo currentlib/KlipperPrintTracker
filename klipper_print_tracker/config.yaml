@@ -21,6 +21,7 @@ ports:
 ports_description:
   8100/tcp: Optional read-only web UI outside Home Assistant (not needed with ingress)
 options:
+  printers: []
   printer_name: 3D Printer
   electricity_price: 0
   default_filament_price: 0
@@ -29,7 +30,12 @@ options:
   auto_fetch_layouts: true
   log_level: info
 schema:
-  moonraker_url: url
+  printers:
+    - id: match(^[a-z0-9]+$)
+      name: str
+      moonraker_url: url
+      energy_sensor: str?
+  moonraker_url: url?
   printer_name: str
   energy_sensor: str?
   electricity_price: float(0,)

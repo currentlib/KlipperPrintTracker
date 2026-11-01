@@ -8,6 +8,7 @@ from pathlib import Path
 from aiohttp import web
 
 from . import summary, views
+from .config import DEFAULT_PRINTER
 from .settings_git import diff_configs, short_changes
 
 log = logging.getLogger(__name__)
@@ -74,13 +75,16 @@ async def index(request):
 
 async def health(request):
     s = _services(request)
-    return web.json_response({"status": "ok", "moonraker": s.moonraker.connected,
+    printers = {t.printer.id: t.moonraker.connected for t in s.trackers.values()}
+    return web.json_response({"status": "ok", "printers": printers,
                               "mqtt": bool(s.mqtt and s.mqtt.client)})
 
 
 def _row(record: dict, links) -> dict:
     row = summary.recent_row(record, links)
-    return {**row, "job_id": record["job_id"], "file": summary.display_name(record.get("filename")),
+    printer = record.get("printer_id", DEFAULT_PRINTER)
+    return {**row, "job_id": record["job_id"], "printer_id": printer, "ref": f"{printer}:{record['job_id']}",
+            "file": summary.display_name(record.get("filename")),
             "end_time": record.get("end_time"),
             "thumbnail": record.get("thumbnail") and f"thumbs/{record['thumbnail']}",
             "changed": len(short_changes(record)), "kwh": record.get("kwh"),
@@ -90,11 +94,16 @@ def _row(record: dict, links) -> dict:
 
 async def stats(request):
     s = _services(request)
-    recent, _ = s.db.jobs(limit=10)
+    printer = request.query.get("printer") or None
+    recent, _ = s.db.jobs(printer=printer, limit=10)
     return web.json_response({
-        **s.db.stats(), "currency": summary.display_currency(s.options.currency),
-        "recent": [_row(j, s.links) for j in recent],
-        "top_parts": s.db.top_parts(), "top_excluded": s.db.top_excluded()})
+        **s.db.stats(printer), "currency": summary.display_currency(s.options.currency),
+        "printers": _printers(s), "recent": [_row(j, s.links) for j in recent],
+        "top_parts": s.db.top_parts(printer=printer), "top_excluded": s.db.top_excluded(printer=printer)})
+
+
+def _printers(s) -> list[dict]:
+    return [{"id": t.printer.id, "name": t.printer.name} for t in s.trackers.values()]
 
 
 def _date(value: str | None, days: int = 0) -> float | None:
@@ -108,7 +117,7 @@ def _date(value: str | None, days: int = 0) -> float | None:
 
 def _filters(request) -> dict:
     q = request.query
-    return {"file": q.get("file") or None, "status": q.get("status") or None,
+    return {"printer": q.get("printer") or None, "file": q.get("file") or None, "status": q.get("status") or None,
             "preset": q.get("preset") or None, "spool": q.get("spool") or None,
             "date_from": _date(q.get("from")), "date_to": _date(q.get("to"), 1)}
 
@@ -126,7 +135,8 @@ async def jobs(request):
                             offset=_int(request, "offset", 0), sort=request.query.get("sort", "date"),
                             descending=request.query.get("dir", "desc") != "asc")
     return web.json_response({"jobs": [_row(j, s.links) for j in rows], "total": total,
-                              "facets": s.db.facets(),
+                              "facets": s.db.facets(request.query.get("printer") or None),
+                              "printers": _printers(s),
                               "currency": summary.display_currency(s.options.currency)})
 
 
@@ -152,7 +162,10 @@ async def jobs_csv(request):
 
 
 def _get_job(request, key: str = "job_id") -> dict:
-    record = _services(request).db.get_job(request.match_info[key])
+    """Takes printer1:000042. A bare job id, from an older link, finds the first match."""
+    db = _services(request).db
+    printer, _, job_id = request.match_info[key].rpartition(":")
+    record = db.get_job(job_id, printer) if printer else db.find_job(job_id)
     if record is None:
         raise web.HTTPNotFound(text="No such job")
     return record
@@ -165,8 +178,8 @@ async def job(request):
     layout = await s.layouts.get(record["slicer"], record["slicer_version"])
     changes = {}
     for kind, change in (record.get("changes") or {}).items():
-        other = s.db.get_job(change["job_id"])
-        changes[kind] = {"job_id": change["job_id"], "diff": views.labelled_diff(change["diff"], layout),
+        other = s.db.get_job(change["job_id"], record["printer_id"])
+        changes[kind] = {"ref": f"{record['printer_id']}:{change['job_id']}", "diff": views.labelled_diff(change["diff"], layout),
                          "file": summary.display_name(other["filename"]) if other else None}
     drift = {name: views.labelled_diff(diff, layout) for name, diff in (record.get("preset_drift") or {}).items()}
     return web.json_response({
@@ -221,7 +234,7 @@ async def preset(request):
     kind, name = request.match_info["kind"], request.match_info["name"]
     if kind not in views.TAB_ORDER:
         raise web.HTTPNotFound(text="No such preset type")
-    records = s.db.preset_jobs(kind, name)
+    records = s.db.preset_jobs(kind, name, request.query.get("printer") or None)
     if not records:
         raise web.HTTPNotFound(text="No such preset")
     layout = None
@@ -242,8 +255,8 @@ async def preset(request):
 
 
 async def reconcile(request):
-    added = await _services(request).tracker.reconcile()
-    return web.json_response({"added": added})
+    trackers = _services(request).trackers.values()
+    return web.json_response({"added": sum([await t.reconcile() for t in trackers])})
 
 
 async def thumbnail(request):

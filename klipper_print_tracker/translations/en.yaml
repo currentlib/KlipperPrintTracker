@@ -1,13 +1,29 @@
 configuration:
+  printers:
+    name: Printers
+    description: One entry per printer, with an id of a-z and 0-9. Keep printer1 for the existing printer. When empty, the single-printer options below are used.
+    fields:
+      id:
+        name: ID
+        description: Short and permanent, for example printer1.
+      name:
+        name: Name
+        description: Shown in the UI and in the MQTT device name.
+      moonraker_url:
+        name: Moonraker URL
+        description: For example http://192.168.1.50:7125. Creality K1 series printers also work on port 4408.
+      energy_sensor:
+        name: Energy sensor
+        description: Entity ID of a total energy counter in kWh, not a daily one.
   moonraker_url:
-    name: Moonraker URL
-    description: For example http://192.168.1.50:7125. Creality K1 series printers also work on port 4408.
+    name: Moonraker URL (single printer)
+    description: For example http://192.168.1.50:7125. Used when the printers list is empty.
   printer_name:
-    name: Printer name
-    description: Used in the name of the MQTT device.
+    name: Printer name (single printer)
+    description: Used when the printers list is empty.
   energy_sensor:
-    name: Energy sensor
-    description: Entity ID of a total energy counter in kWh, not a daily one.
+    name: Energy sensor (single printer)
+    description: Entity ID of a total energy counter in kWh. Used when the printers list is empty.
   electricity_price:
     name: Electricity price
     description: Price per kWh.

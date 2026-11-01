@@ -2,7 +2,7 @@
 import re
 
 _COPY_SUFFIX = re.compile(r"_id_\d+_copy_\d+$", re.IGNORECASE)
-_MODEL_EXT = re.compile(r"\.(stl|3mf|obj|step|stp)(_\d+)?$", re.IGNORECASE)
+_MODEL_EXT = re.compile(r"\.(stl|3mf|obj|step|stp|drc)(_\d+)?$", re.IGNORECASE)
 
 
 def normalise_name(name: str) -> str:

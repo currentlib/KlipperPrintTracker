@@ -1,6 +1,6 @@
 // All UI text lives here, add a file like this one for another language.
 window.S = {
-  app_title: "Print Tracker",
+  app_title: "Print Tracker", printer: "Принтер", all_printers: "Усі принтери",
   nav_home: "Головна", nav_prints: "Друки", back: "Назад",
   error: "Не вдалося завантажити дані", all_prints: "Усі друки",
   unit_g: "г", unit_kg: "кг", unit_mm: "мм", unit_kwh: "кВт·год", unit_hours: "год", unit_minutes: "хв",

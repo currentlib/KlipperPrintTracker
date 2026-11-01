@@ -52,7 +52,7 @@ const { chromium } = require("playwright-core");
   const tour = await direct.newPage();
   tour.on("pageerror", (error) => errors.push(error.message));
   tour.on("request", (request) => { if (!request.url().startsWith(base) && !request.url().startsWith("data:")) errors.push(`external: ${request.url()}`); });
-  for (const hash of ["#/", "#/prints", "#/prints?status=error&sort=cost&dir=asc", "#/job/000016", "#/compare/000001/000022", "#/part/Clip", "#/preset/process/0.24mm%20Draft%20%40Creality%20K1C"]) {
+  for (const hash of ["#/", "#/prints", "#/prints?status=error&sort=cost&dir=asc", "#/job/printer1:000016", "#/compare/printer1:000001/printer1:000022", "#/part/Clip", "#/preset/process/0.24mm%20Draft%20%40Creality%20K1C"]) {
     await tour.goto(`${base}/${hash}`);
     await tour.waitForSelector(".skeleton", { state: "detached" });
     await tour.waitForTimeout(80);

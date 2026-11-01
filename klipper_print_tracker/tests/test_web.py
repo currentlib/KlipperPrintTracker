@@ -29,6 +29,7 @@ class Tracker:
 
 class NoMoonraker:
     connected = True
+    printer = Options(moonraker_url="http://a.example").printers[0]
 
     def __init__(self, parts):
         self.parts = parts
@@ -63,7 +64,9 @@ async def services(tmp_path):
               status="cancelled", spool="PLA")
     await add("000003", 1000200.0, filename="-danger.gcode",
               printed={"Clip": 1}, excluded={})
-    yield SimpleNamespace(options=Options(currency="UAH"), db=db, moonraker=moonraker, tracker=Tracker(),
+    tracker = Tracker()
+    tracker.moonraker, tracker.printer = moonraker, NoMoonraker.printer
+    yield SimpleNamespace(options=Options(currency="UAH"), db=db, trackers={"printer1": tracker},
                           layouts=layouts, links=links, thumbs=tmp_path / "thumbs", mqtt=None)
     db.close()
 
@@ -137,7 +140,7 @@ async def test_job_page_data(client):
     assert row["key"] == "layer_height" and row["label"] == "Висота шару"
     assert row["unit"] == "мм" and row["raw"] == "0.24" and row["tooltip"]
     change = data["changes"]["file"]
-    assert change["job_id"] == "000001" and change["diff"][0]["key"] == "outer_wall_speed"
+    assert change["ref"] == "printer1:000001" and change["diff"][0]["key"] == "outer_wall_speed"
     assert change["diff"][0]["old"]["raw"] == "200" and change["diff"][0]["new"]["raw"] == "180"
     assert "process/0.24mm Draft @Creality K1C" in data["drift"]
 
@@ -149,6 +152,11 @@ async def test_enum_and_bool_values_use_labels(client):
     assert rows["seam_position"]["text"] not in ("aligned", "Aligned")
     assert rows["spiral_mode"]["flags"] == [False]
     assert rows["different_settings_to_system"]["label"]
+
+
+async def test_job_refs(client):
+    assert (await (await client.get("/api/job/printer1:000002")).json())["ref"] == "printer1:000002"
+    assert (await client.get("/api/job/printer2:000002")).status == 404
 
 
 async def test_unknown_job(client):
@@ -201,7 +209,7 @@ async def test_everything_resolves_under_the_ingress_prefix(client):
 
     script = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "fetch(`api/${path}`)" in script
-    calls = re.findall(r'api\(`?"?([a-z]+)', script)
+    calls = re.findall(r'api\((?:scoped\()?`?"?([a-z]+)', script)
     assert set(calls) >= {"stats", "jobs", "job", "compare", "part", "preset"}
     for call in ("stats", "jobs", "job/000001", "compare/000001/000002", "part/Clip"):
         url = urljoin(PREFIX, f"api/{call}")

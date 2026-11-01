@@ -11,7 +11,7 @@ from .db import Database
 from .links import Links
 from .moonraker import Moonraker
 from .mqtt import MqttPublisher
-from .settings_git import SettingsHistory
+from .settings_git import SettingsHistory, migrate_git_layout
 from .sheets import GoogleSheets
 from .slicer_meta import LayoutStore
 from .supervisor import Supervisor
@@ -27,8 +27,7 @@ DIRECT_PORT = 8100
 class Services:
     options: object
     db: Database
-    moonraker: Moonraker
-    tracker: Tracker
+    trackers: dict
     layouts: LayoutStore
     links: Links
     thumbs: object
@@ -64,24 +63,38 @@ async def main():
         supervisor = Supervisor(session)
         links = Links(await supervisor.app_slug(), options.direct_url, await supervisor.external_url())
         db = Database(DATA_DIR / "tracker.db")
-        moonraker = Moonraker(options.moonraker_url, session)
+        migrate_git_layout(DATA_DIR)
         layouts = LayoutStore(DATA_DIR / "layouts", options.auto_fetch_layouts)
-        settings = SettingsHistory(db, moonraker, layouts, DATA_DIR)
-        tracker = Tracker(options, db, moonraker, supervisor, settings)
-        mqtt = MqttPublisher(options, db, supervisor, links, tracker.reconcile)
-        tracker.listeners = [mqtt, GoogleSheets(options, supervisor, links)]
-        moonraker.on_status = tracker.on_status
-        moonraker.on_history = tracker.on_history
-        services = Services(options, db, moonraker, tracker, layouts, links, settings.thumbs, mqtt)
+        if not options.printers:
+            log.error("No printer configured: set printers or moonraker_url in the add-on options")
+        trackers = {}
+        for printer in options.printers:
+            moonraker = Moonraker(printer.moonraker_url, session)
+            settings = SettingsHistory(db, moonraker, layouts, DATA_DIR, printer.id)
+            tracker = Tracker(options, db, moonraker, supervisor, settings, printer=printer)
+            moonraker.on_status = tracker.on_status
+            moonraker.on_history = tracker.on_history
+            trackers[printer.id] = tracker
+
+        async def rescan():
+            for tracker in trackers.values():
+                await tracker.reconcile()
+
+        mqtt = MqttPublisher(options, db, supervisor, links, rescan)
+        sheets = GoogleSheets(options, supervisor, links)
+        for tracker in trackers.values():
+            tracker.listeners = [mqtt, sheets]
+        services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", mqtt)
 
         runners = [await serve(create_app(services), INGRESS_PORT),
                    await serve(create_app(services, ingress=False), DIRECT_PORT)]
         log.info("Print Tracker started, panel at %s", links.panel())
         try:
-            await asyncio.gather(
-                keep_running("Moonraker", moonraker.run),
-                keep_running("MQTT", mqtt.run),
-                keep_running("Reconcile", tracker.run_reconcile))
+            jobs = [keep_running("MQTT", mqtt.run)]
+            for printer_id, tracker in trackers.items():
+                jobs.append(keep_running(f"Moonraker {printer_id}", tracker.moonraker.run))
+                jobs.append(keep_running(f"Reconcile {printer_id}", tracker.run_reconcile))
+            await asyncio.gather(*jobs)
         finally:
             for runner in runners:
                 await runner.cleanup()

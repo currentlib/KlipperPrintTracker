@@ -3,7 +3,7 @@
 const { chromium } = require("playwright-core");
 
 const SIZES = { desktop: { width: 1440, height: 900 }, mobile: { width: 390, height: 844 } };
-const PAGES = { home: "#/", prints: "#/prints", job: "#/job/000016", compare: "#/compare/000001/000022" };
+const PAGES = { home: "#/", prints: "#/prints", job: "#/job/printer1:000016", compare: "#/compare/printer1:000001/printer1:000022" };
 
 (async () => {
   const [base, out, emptyBase] = process.argv.slice(2);

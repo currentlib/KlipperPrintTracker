@@ -6,6 +6,7 @@ import time
 import aiohttp
 
 from . import calc
+from .config import PrinterOptions
 
 log = logging.getLogger(__name__)
 
@@ -17,15 +18,16 @@ REST_ERRORS = (aiohttp.ClientError, OSError, TimeoutError, KeyError, ValueError)
 
 
 class Tracker:
-    def __init__(self, options, db, moonraker, supervisor, settings=None, listeners=()):
+    def __init__(self, options, db, moonraker, supervisor, settings=None, listeners=(), printer=None):
         self.options = options
+        self.printer = printer or PrinterOptions(energy_sensor=options.energy_sensor)
         self.db = db
         self.moonraker = moonraker
         self.supervisor = supervisor
         self.settings = settings
         self.listeners = list(listeners)
         self.state = None
-        self.active = db.get_active()
+        self.active = db.get_active(self.printer.id)
         self.first_start = db.first_start()
         self._last_added = None
         self._finish_task = None
@@ -55,12 +57,12 @@ class Tracker:
         self.active = {
             "job_id": self._last_added, "filename": filename, "started_at": time.time(),
             # An add-on started mid-print can't know the energy at the print's start.
-            "start_kwh": None if resumed else await self.supervisor.energy(self.options.energy_sensor),
+            "start_kwh": None if resumed else await self.supervisor.energy(self.printer.energy_sensor),
             "objects": [], "excluded": [], "live": not resumed,
         }
         self._last_added = None
-        self.db.set_active(self.active)
-        await self._notify("current", self.active)
+        self.db.set_active(self.active, self.printer.id)
+        await self._notify("current", self.printer.id, self.active)
 
     async def _status_filename(self) -> str | None:
         try:
@@ -77,14 +79,14 @@ class Tracker:
             self.active["objects"] = [o["name"] for o in delta["objects"]]
         if "excluded_objects" in delta:
             self.active["excluded"] = list(delta["excluded_objects"])
-        self.db.set_active(self.active)
-        await self._notify("current", self.active)
+        self.db.set_active(self.active, self.printer.id)
+        await self._notify("current", self.printer.id, self.active)
 
     async def on_history(self, action: str, job: dict):
         if action == "added":
             if self.active and not self.active.get("job_id"):
                 self.active["job_id"] = job.get("job_id")
-                self.db.set_active(self.active)
+                self.db.set_active(self.active, self.printer.id)
             elif not self.active:
                 self._last_added = job.get("job_id")
         elif action == "finished" and self.active and self.active.get("job_id") == job.get("job_id"):
@@ -127,7 +129,7 @@ class Tracker:
         for job in reversed(jobs):
             finished = job.get("status") != "in_progress"
             if finished and (job.get("end_time") or 0) >= self.first_start \
-                    and not self.db.has_job(job["job_id"]):
+                    and not self.db.has_job(job["job_id"], self.printer.id):
                 active = self.active if self._matches(job) else None
                 added += await self.finalise(job, active)
         return added
@@ -141,7 +143,7 @@ class Tracker:
 
     async def finalise(self, job: dict, active: dict | None) -> bool:
         async with self._lock:
-            if self.db.has_job(job["job_id"]):
+            if self.db.has_job(job["job_id"], self.printer.id):
                 return False
             record = await self._build_record(job, active)
             if self.settings:
@@ -151,10 +153,10 @@ class Tracker:
                     log.exception("Settings snapshot failed for job %s", job["job_id"])
             self.db.save_job(record)
             if active:
-                self.db.set_active(None)
+                self.db.set_active(None, self.printer.id)
                 if self.active is active:
                     self.active = None
-                await self._notify("current", None)
+                await self._notify("current", self.printer.id, None)
         await self._notify("job_finished", record)
         return True
 
@@ -174,12 +176,13 @@ class Tracker:
         metadata = job.get("metadata") or {}
         used_mm = job.get("filament_used") or 0
         grams = calc.grams_used(metadata, used_mm, status)
-        end_kwh = await self.supervisor.energy(self.options.energy_sensor)
+        end_kwh = await self.supervisor.energy(self.printer.energy_sensor)
         kwh = calc.energy_delta((active or {}).get("start_kwh"), end_kwh)
         spool_id, spool_name, price_kg = await self._spool()
         price_kg = price_kg or self.options.default_filament_price
         return {
-            "job_id": job["job_id"], "filename": job.get("filename"), "status": status,
+            "printer_id": self.printer.id, "job_id": job["job_id"], "filename": job.get("filename"),
+            "status": status,
             "start_time": job.get("start_time"), "end_time": job.get("end_time"),
             "print_duration": job.get("print_duration") or 0,
             "planned": planned, "parts": parts, "printed": printed, "excluded": excluded_names,
@@ -201,10 +204,10 @@ class Tracker:
             log.debug("Spoolman isn't available: %s", err)
             return None, None, None
 
-    async def _notify(self, method: str, payload):
+    async def _notify(self, method: str, *payload):
         for listener in self.listeners:
             try:
-                await getattr(listener, method)(payload)
+                await getattr(listener, method)(*payload)
             except Exception:
                 log.exception("Listener %s.%s failed", type(listener).__name__, method)
 

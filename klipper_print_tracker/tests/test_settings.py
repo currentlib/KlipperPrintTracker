@@ -41,7 +41,7 @@ async def rig(tmp_path):
         pass
 
     rig = Rig()
-    rig.fake, rig.db, rig.history, rig.moonraker, rig.repo = fake, db, history, moonraker, tmp_path / "git"
+    rig.fake, rig.db, rig.history, rig.moonraker, rig.repo = fake, db, history, moonraker, tmp_path / "git" / "printer1"
     rig.clock = time.time()
 
     async def job(job_id, filename="plate.gcode", content=SAMPLE, status="completed"):
@@ -202,8 +202,8 @@ async def test_thumbnail(rig):
         {"width": 900, "relative_path": ".thumbs/p-900.png"}]}
     rig.fake.thumbs["sub/.thumbs/p-300.png"] = b"PNGDATA"
     record = await rig.job("000001", filename="sub/p.gcode")
-    assert record["thumbnail"] == "000001.png"
-    assert (rig.history.thumbs / "000001.png").read_bytes() == b"PNGDATA"
+    assert record["thumbnail"] == "printer1_000001.png"
+    assert (rig.history.thumbs / "printer1_000001.png").read_bytes() == b"PNGDATA"
 
 
 def test_commit_is_idempotent(tmp_path):
@@ -219,3 +219,15 @@ def test_diff_and_sanitise():
     assert sanitise("../../etc/passwd") == "_.._etc_passwd"
     assert sanitise("0.24mm Draft @Creality K1C") == "0.24mm Draft @Creality K1C"
     assert sanitise("...") == "unnamed"
+
+
+def test_git_folder_moves_to_the_first_printer(tmp_path):
+    from app.settings_git import migrate_git_layout
+    repo = GitHistory(tmp_path / "git")
+    repo.commit({"job_id": "1", "filename": "a", "status": "completed"}, {"a": "1"}, {})
+    migrate_git_layout(tmp_path)
+    moved = tmp_path / "git" / "printer1"
+    assert (moved / "effective.ini").exists() and not (tmp_path / "git" / ".git").exists()
+    assert git(moved, "log", "--format=%s").strip() == "job 1: a [completed]"
+    migrate_git_layout(tmp_path)
+    assert (moved / ".git").exists()
