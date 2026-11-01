@@ -102,6 +102,10 @@ Everything lives in `/data` (`tracker.db`, `thumbs/`, `git/`, `layouts/`), which
 - **A note about incomplete exclusion data:** the add-on wasn't running when that print ended, so the record comes from Moonraker's history. Press **Rescan history** to pick up anything missing.
 - **A deep link opens the start page:** check the Home Assistant version, then copy the exact `url` from `sensor.print_tracker_last_print`.
 
+## UI development
+
+No Moonraker or Home Assistant is needed. `python dev/serve.py` runs the UI on a seeded database (`--empty` for a fresh one). `/harness?theme=dark` loads the app in a frame with HA's variables on the parent, with `light` and `custom` as other themes. `dev/check_theme.js` and `dev/screenshots.js` drive it with Playwright. The `dev/` folder isn't part of the image.
+
 ## Licence note
 
-The bundled `app/layouts/*.json` files contain text generated from OrcaSlicer's source and translations, which are licensed under AGPL-3.0.
+The bundled `app/layouts/*.json` files contain text generated from OrcaSlicer's source and translations, which are licensed under AGPL-3.0. Icons in `app/static/icons.js` come from Material Design Icons (Apache-2.0).

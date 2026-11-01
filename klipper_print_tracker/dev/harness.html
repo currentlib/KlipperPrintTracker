@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Theme harness</title>
+  <style>
+    @font-face { font-family: Roboto; font-weight: 400; src: url(/dev-fonts/roboto-cyrillic-400-normal.woff2) format("woff2"); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+    @font-face { font-family: Roboto; font-weight: 500; src: url(/dev-fonts/roboto-cyrillic-500-normal.woff2) format("woff2"); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+    @font-face { font-family: Roboto; font-weight: 400; src: url(/dev-fonts/roboto-latin-400-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+2000-206F; }
+    @font-face { font-family: Roboto; font-weight: 500; src: url(/dev-fonts/roboto-latin-500-normal.woff2) format("woff2"); unicode-range: U+0000-00FF, U+2000-206F; }
+    html, body { margin: 0; height: 100%; background: var(--primary-background-color); }
+    iframe { display: block; width: 100%; height: 100%; border: 0; }
+  </style>
+  <script>
+    // The same values HA's frontend sets on <html>, from src/resources/theme/color.
+    const BASE = {
+      "--accent-color": "#ff9800", "--success-color": "#43a047", "--warning-color": "#ffa600",
+      "--error-color": "#db4437", "--info-color": "#039be5", "--state-icon-color": "#44739e",
+      "--ha-font-family-body": "Roboto, Noto, sans-serif", "--ha-font-family-code": "monospace",
+    };
+    const THEMES = {
+      light: { "--primary-color": "#009ac7", "--primary-background-color": "#fafafa", "--secondary-background-color": "#e5e5e5",
+        "--card-background-color": "#ffffff", "--primary-text-color": "#141414", "--secondary-text-color": "#5e5e5e",
+        "--disabled-text-color": "#bdbdbd", "--divider-color": "rgba(0, 0, 0, 0.12)", "--outline-color": "rgba(0, 0, 0, 0.12)",
+        "--app-header-background-color": "#ffffff", "--app-header-text-color": "#141414", "--app-header-border-bottom": "1px solid rgba(0, 0, 0, 0.12)" },
+      dark: { "--primary-color": "#009ac7", "--primary-background-color": "#111111", "--secondary-background-color": "#282828",
+        "--card-background-color": "#1c1c1c", "--primary-text-color": "#e1e1e1", "--secondary-text-color": "#9b9b9b",
+        "--disabled-text-color": "#6f6f6f", "--divider-color": "rgba(225, 225, 225, 0.12)", "--outline-color": "rgba(225, 225, 225, 0.12)",
+        "--app-header-background-color": "#1c1c1c", "--app-header-text-color": "#e1e1e1", "--app-header-border-bottom": "1px solid rgba(225, 225, 225, 0.12)" },
+      custom: { "--primary-color": "#7b1fa2", "--primary-background-color": "#1a1423", "--secondary-background-color": "#2e2440",
+        "--card-background-color": "#241b31", "--primary-text-color": "#efe7f7", "--secondary-text-color": "#a999bd",
+        "--disabled-text-color": "#6f6080", "--divider-color": "rgba(239, 231, 247, 0.14)", "--outline-color": "rgba(239, 231, 247, 0.14)",
+        "--app-header-background-color": "#2e2440", "--app-header-text-color": "#efe7f7", "--app-header-border-bottom": "none",
+        "--ha-card-border-radius": "20px", "--success-color": "#26a69a" },
+    };
+    function applyTheme(name) {
+      const root = document.documentElement;
+      for (const key of [...root.style]) root.style.removeProperty(key);
+      for (const [key, value] of Object.entries({ ...BASE, ...THEMES[name] })) root.style.setProperty(key, value);
+      root.style.colorScheme = name === "light" ? "light" : "dark";
+    }
+    applyTheme(new URLSearchParams(location.search).get("theme") || "dark");
+  </script>
+</head>
+<body>
+  <script>
+    // Starts on the same hash as the harness, for screenshots of a given page.
+    const frame = document.createElement("iframe");
+    frame.src = `/${location.hash}`;
+    document.body.append(frame);
+  </script>
+</body>
+</html>

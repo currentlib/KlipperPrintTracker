@@ -1,3 +1,5 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.tmp-fonts/
+node_modules/
