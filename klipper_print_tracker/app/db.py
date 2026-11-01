@@ -23,9 +23,9 @@ JOB_COLUMNS = (
     "per_part", "wasted_cost", "live_data", "config_hash", "config_missing", "slicer",
     "slicer_version", "presets", "thumbnail", "commit_sha", "changes", "preset_drift",
     "material", "rating", "issues", "failure_reason", "note", "rated_at", "spool_check", "progress",
-    "current_layer", "total_layer", "chamber_temp", "interruption", "error_message", "calibration",
+    "current_layer", "total_layer", "chamber_temp", "interruption", "error_message", "calibration", "project_id", "project_line",
 )
-EDITABLE_COLUMNS = {"rating", "issues", "failure_reason", "note", "rated_at", "calibration"}
+EDITABLE_COLUMNS = {"rating", "issues", "failure_reason", "note", "rated_at", "calibration", "project_id", "project_line"}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS configs (hash TEXT PRIMARY KEY, content BLOB NOT NULL);
@@ -121,8 +121,19 @@ def migrate_v6_calibrations(conn):
         created_at REAL, detected INTEGER, PRIMARY KEY (printer_id, job_id))""")
 
 
+def migrate_v7_projects(conn):
+    conn.execute("ALTER TABLE jobs ADD COLUMN project_id INTEGER")
+    conn.execute("ALTER TABLE jobs ADD COLUMN project_line TEXT")
+    conn.execute("""CREATE TABLE projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT DEFAULT '', status TEXT NOT NULL,
+        deadline TEXT, created_at REAL)""")
+    conn.execute("""CREATE TABLE project_targets (
+        project_id INTEGER NOT NULL, part TEXT NOT NULL, quantity INTEGER NOT NULL, PRIMARY KEY (project_id, part))""")
+    conn.execute("CREATE TABLE project_rules (project_id INTEGER NOT NULL, kind TEXT NOT NULL, pattern TEXT NOT NULL)")
+
+
 MIGRATIONS = [migrate_v2_printers, migrate_v3_results, migrate_v4_maintenance, migrate_v5_failures,
-              migrate_v6_calibrations]
+              migrate_v6_calibrations, migrate_v7_projects]
 
 
 class Database:
@@ -239,7 +250,7 @@ class Database:
             self.conn.executemany("INSERT OR IGNORE INTO tags VALUES (?, ?)", [(n, i) for i, n in enumerate(names)])
 
     def jobs(self, printer=None, file=None, status=None, preset=None, spool=None, date_from=None,
-             date_to=None, rating=None, material=None, limit=100, offset=0, sort="date", descending=True) -> tuple[list[dict], int]:
+             date_to=None, rating=None, material=None, project=None, limit=100, offset=0, sort="date", descending=True) -> tuple[list[dict], int]:
         where, params = [], []
         if printer:
             where.append("printer_id = ?")
@@ -256,6 +267,9 @@ class Database:
         if spool:
             where.append("spool = ?")
             params.append(spool)
+        if project is not None:
+            where.append("project_id = ?")
+            params.append(project)
         if material:
             where.append("material = ?")
             params.append(material)

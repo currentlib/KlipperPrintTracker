@@ -115,6 +115,9 @@ variables:
 
     ⏱️ {{ h }} год {{ mm }} хв · 🧵 {{ job.grams }} г{% if job.kwh is not none %} · ⚡ {{ job.kwh }} кВт·год{% endif %}
     💸 {{ job.cost }} {{ job.currency }}{% if per_part > 0 %} ({{ per_part }} {{ job.currency }}/шт){% endif %}
+    {%- if job.project_line %}
+    📁 {{ job.project_line }}
+    {%- endif %}
     {%- if include_changes and job.changed_settings %}
     ⚙️ Змінено з минулого друку: {{ job.changed_settings | join(', ') }}
     {%- endif %}

@@ -33,7 +33,7 @@ function printerSwitch() {
 }
 
 function setToolbar({ title = S.app_title, back = false, tab = "", actions = "" }) {
-  const tabs = [["#/", S.nav_home, "home"], ["#/prints", S.nav_prints, "prints"], ["#/calibration", S.nav_calibration, "calibration"], ["#/maintenance", S.nav_maintenance, "maintenance"], ["#/analysis", S.nav_analysis, "analysis"]]
+  const tabs = [["#/", S.nav_home, "home"], ["#/prints", S.nav_prints, "prints"], ["#/calibration", S.nav_calibration, "calibration"], ["#/maintenance", S.nav_maintenance, "maintenance"], ["#/projects", S.nav_projects, "projects"], ["#/analysis", S.nav_analysis, "analysis"]]
     .map(([href, label, id]) => `<a href="${href}" class="${id === tab ? "on" : ""}">${label}</a>`).join("");
   toolbarElement.innerHTML = `
     ${back ? `<a class="icon-button" href="#/prints" title="${S.back}" aria-label="${S.back}">${icon("arrow-left")}</a>` : ""}
@@ -349,7 +349,7 @@ async function jobPage(id) {
   const setting = (r) => tipRow(r, `${rawValue(r)}${unit(r)}`);
   return header
     + section(`${heading("thumb-up", S.rating)}${ratingBlock(j, tagList)}`, "span-all")
-    + calibrationBlock(j) + failureBlock(j) + spoolBlock(j.spool_check)
+    + projectPicker(j) + calibrationBlock(j) + failureBlock(j) + spoolBlock(j.spool_check)
     + section(`${heading("tune-variant", S.presets)}<div class="badges">${presetBadges(j)}</div>`, "span-all")
     + `<div class="columns span-all job-columns">
       ${section(`${heading("file-compare", S.changes)}${card(["file", "process", "filament"].map((k) => changeBlock(k, j.changes[k])).join(""))}${card(picker)}`)}
@@ -504,6 +504,75 @@ async function calibrationPage() {
   }).join("");
 }
 
+// --- projects ------------------------------------------------------------
+
+function projectBar(p) {
+  return `<span class="bar" style="--c:var(--primary-color)"><i style="width:${p.percent}%"></i></span>`;
+}
+
+function projectCard(p) {
+  return `<a class="card project-card" href="#/project/${p.id}">
+    <span class="tile-row"><span class="tile-name ellipsis">${e(p.name)}</span>
+      <span class="badge count">${S[`proj_${p.status}`]}</span></span>
+    ${projectBar(p)}
+    <span class="muted small">${e(S.proj_progress(p.done, p.target))} · ${UI.number(p.percent, 0)}%${p.deadline ? ` · ${e(p.deadline)}` : ""}</span></a>`;
+}
+
+async function projectsPage() {
+  setToolbar({ tab: "projects", title: S.projects });
+  const d = await api("projects");
+  const add = `<button class="text-button" data-action="add-project">${S.proj_add}</button>`;
+  return section(`${heading("folder-multiple-outline", S.projects, add)}
+    ${d.projects.length ? `<div class="task-grid">${d.projects.map(projectCard).join("")}</div>` : card(empty("folder-multiple-outline", S.proj_empty))}`, "span-all");
+}
+
+function projectForm(p) {
+  const rule = (kind) => p.rules.filter((r) => r.kind === kind).map((r) => r.pattern).join("\n");
+  const targets = p.targets.map((t) => `${t.part} = ${t.quantity}`).join("\n");
+  const statuses = ["active", "done", "archived"].map((s) => `<option value="${s}"${p.status === s ? " selected" : ""}>${S[`proj_${s}`]}</option>`).join("");
+  const text = (name, label, value, type = "text") => `<label class="form-field span-row">${label}<input class="field" type="${type}" name="${name}" value="${e(value ?? "")}"></label>`;
+  const area = (name, label, value) => `<label class="form-field span-row">${label}<textarea class="field" name="${name}" rows="3">${e(value)}</textarea></label>`;
+  return card(`<details class="manage card-body"><summary>${S.proj_edit}</summary><form class="task-form" data-project="${p.id}">
+    ${text("name", S.proj_name, p.name)}${text("description", S.proj_description, p.description)}
+    ${text("deadline", S.proj_deadline, p.deadline, "date")}
+    <label class="form-field span-row">${S.proj_status}<select class="field" name="status">${statuses}</select></label>
+    ${area("targets", S.proj_targets, targets)}${area("file_rules", S.proj_rules_file, rule("file"))}${area("part_rules", S.proj_rules_part, rule("part"))}
+    <div class="form-actions"><button class="text-button">${S.save}</button>
+    <button type="button" class="text-button danger" data-delete-project="${p.id}">${S.proj_delete}</button></div></form></details>`);
+}
+
+async function projectPage(id) {
+  setToolbar({ back: true, tab: "projects", title: S.projects });
+  const p = await api(`project/${enc(id)}`);
+  UI.setCurrency(p.currency);
+  setToolbar({ back: true, tab: "projects", title: p.name });
+  const left = p.estimate ? S.proj_left_state(UI.duration(p.estimate.hours * 60), UI.grams(p.estimate.grams)) : S.proj_left_none;
+  const parts = p.parts.map((part) => `<a class="list-row" href="#/part/${enc(part.name)}">
+    <span class="ellipsis" title="${e(part.name)}">${e(part.name)}</span><span class="badge count">${part.printed} / ${part.target}</span>
+    <span class="bar" style="--c:var(--primary-color)"><i style="width:${Math.min(100, (100 * part.printed) / part.target)}%"></i></span></a>`).join("");
+  const total = (key) => p.success[key] + p.failed[key];
+  return section(`${heading("folder-multiple-outline", p.name, UI.percent(p.percent))}
+      ${p.description ? `<div class="muted">${e(p.description)}</div>` : ""}
+      <div class="tiles six">
+      ${tile({ name: S.proj_parts, state: S.proj_progress(p.done, p.target), iconName: "shape-outline", variable: "--primary-color" })}
+      ${tile({ name: S.proj_left, state: left, iconName: "timer-outline", variable: "--info-color" })}
+      ${tile({ name: S.proj_time, state: UI.duration(total("hours") * 60), iconName: "timer-outline", variable: "--state-icon-color" })}
+      ${tile({ name: S.proj_filament, state: `${UI.grams(total("grams"))}, ${S.proj_failed(UI.grams(p.failed.grams))}`, iconName: "printer-3d-nozzle", variable: "--state-icon-color" })}
+      ${tile({ name: S.proj_energy, state: UI.kwh(total("kwh")), iconName: "lightning-bolt", variable: "--warning-color" })}
+      ${tile({ name: S.proj_cost, state: `${UI.money(total("cost"))}, ${S.proj_failed(UI.money(p.failed.cost))}`, iconName: "cash-multiple", variable: "--accent-color" })}
+      </div>`, "span-all")
+    + section(`${heading("shape-outline", S.proj_parts)}${card(parts || empty("shape-outline", S.empty_parts))}${projectForm(p)}`, "span-all")
+    + section(`${heading("history", S.proj_prints)}${card(p.jobs.length ? dataTable(JOB_COLUMNS, p.jobs) : empty("printer-3d-nozzle", S.empty_prints))}`, "span-all");
+}
+
+function projectPicker(j) {
+  const items = j.projects.map((p) => `<option value="${p.id}"${j.project_id === p.id ? " selected" : ""}>${e(p.name)}</option>`).join("");
+  if (!j.projects.length && !j.project_id) return "";
+  return section(`${heading("folder-multiple-outline", S.proj_assign, j.project_id ? `<a href="#/project/${j.project_id}">${icon("chevron-right", "s18")}</a>` : "")}
+    ${card(`<div class="card-body"><select class="compare-select" data-assign="${e(j.ref)}" aria-label="${S.proj_assign}">
+    <option value="">${S.proj_none}</option>${items}</select></div>`)}`, "span-all");
+}
+
 // --- analysis ------------------------------------------------------------
 
 function dimensionRows(items) {
@@ -596,6 +665,8 @@ async function render() {
     else if (page === "maintenance") html = await maintenancePage();
     else if (page === "analysis") html = await analysisPage();
     else if (page === "calibration") html = await calibrationPage();
+    else if (page === "projects") html = await projectsPage();
+    else if (page === "project") html = await projectPage(args[0]);
     else if (page === "compare") html = await comparePage(args[0], args[1]);
     else if (page === "part") html = await partPage(args.join("/"));
     else if (page === "preset") html = await presetPage(args[0], args.slice(1).join("/"));
@@ -611,9 +682,14 @@ async function saveRating(block, fields) {
 }
 
 document.addEventListener("click", async (event) => {
-  const action = event.target.closest("[data-done], [data-delete-task], [data-add-task]");
+  const action = event.target.closest("[data-done], [data-delete-task], [data-add-task], [data-delete-project]");
   if (action) {
     event.preventDefault();
+    if (action.dataset.deleteProject) {
+      await fetch(`api/project/${action.dataset.deleteProject}`, { method: "DELETE" });
+      location.hash = "#/projects";
+      return;
+    }
     if (action.dataset.done) await post(`maintenance/task/${action.dataset.done}/done`, {});
     else if (action.dataset.deleteTask) await fetch(`api/maintenance/task/${action.dataset.deleteTask}`, { method: "DELETE" });
     else await post(`maintenance/${enc(action.dataset.addTask)}`, { name: S.maint_add, hours: 100 });
@@ -648,6 +724,9 @@ document.addEventListener("click", async (event) => {
     form.classList.toggle("open");
     if (form.classList.contains("open")) form.elements.file.focus();
     else form.requestSubmit();
+  } else if (target.dataset.action === "add-project") {
+    const { id } = await (await post("projects", { name: S.proj_new })).json();
+    location.hash = `#/project/${id}`;
   } else if (target.dataset.action === "save-tags") {
     await fetch("api/tags", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -678,6 +757,10 @@ document.addEventListener("pointermove", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  if (event.target.dataset.assign) {
+    post(`job/${enc(event.target.dataset.assign)}/project`, { project_id: event.target.value ? Number(event.target.value) : null });
+    return;
+  }
   if (event.target.dataset.analysisFilter) {
     const next = new URLSearchParams(listParams());
     if (event.target.value) next.set(event.target.dataset.analysisFilter, event.target.value);
@@ -720,6 +803,21 @@ document.addEventListener("submit", async (event) => {
     data.material_pattern = data.material_pattern || null;
     data.enabled = form.elements.enabled.checked ? 1 : 0;
     await post(`maintenance/task/${form.dataset.task}`, data);
+    render();
+    return;
+  }
+  if (form.dataset.project) {
+    event.preventDefault();
+    const data = new FormData(form);
+    const lines = (name) => data.get(name).split("\n").map((line) => line.trim()).filter(Boolean);
+    const targets = lines("targets").map((line) => {
+      const [part, quantity] = line.split("=").map((x) => x.trim());
+      return { part, quantity: Number(quantity) || 1 };
+    });
+    await post(`project/${form.dataset.project}`, {
+      name: data.get("name"), description: data.get("description"), deadline: data.get("deadline") || null, status: data.get("status"), targets,
+      rules: [...lines("file_rules").map((pattern) => ({ kind: "file", pattern })), ...lines("part_rules").map((pattern) => ({ kind: "part", pattern }))],
+    });
     render();
     return;
   }

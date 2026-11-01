@@ -14,6 +14,7 @@ from .housekeeping import Housekeeping
 from .links import Links
 from .maintenance import Maintenance
 from .moonraker import Moonraker
+from .projects import Projects
 from .ratings import HomeAssistantEvents, Ratings
 from .mqtt import MqttPublisher
 from .settings_git import SettingsHistory, migrate_git_layout
@@ -39,6 +40,7 @@ class Services:
     ratings: Ratings
     maintenance: Maintenance
     calibrations: Calibrations
+    projects: Projects
     mqtt: MqttPublisher | None = None
 
 
@@ -113,11 +115,15 @@ async def main():
         mqtt.providers.append(calibrations)
         for tracker in trackers.values():
             tracker.listeners.insert(0, calibrations)
+        project_store = Projects(db)
+        mqtt.providers.append(project_store)
+        for tracker in trackers.values():
+            tracker.listeners.insert(1, project_store)
         ratings = Ratings(db, [mqtt])
         events = HomeAssistantEvents(session, supervisor.token)
         events.handlers.extend([ratings.from_action, maintenance.from_action, calibrations.from_action])
         events.handlers.extend(tracker.on_action for tracker in trackers.values())
-        services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", ratings, maintenance, calibrations, mqtt)
+        services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", ratings, maintenance, calibrations, project_store, mqtt)
 
         runners = [await serve(create_app(services), INGRESS_PORT),
                    await serve(create_app(services, ingress=False), DIRECT_PORT)]

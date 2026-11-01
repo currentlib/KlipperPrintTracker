@@ -344,3 +344,6 @@ a.list-row:hover { background: var(--secondary-background-color); }
 .form-field.span-row { grid-column: 1 / -1; }
 .form-field.wide { grid-column: auto; }
 .form-field.wide:nth-child(-n+2) { grid-column: auto; }
+.project-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+a.project-card:hover { background: var(--secondary-background-color); }
+.project-card .tile-row { justify-content: space-between; }

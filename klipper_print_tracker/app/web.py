@@ -11,6 +11,7 @@ from aiohttp import web
 from . import analysis, summary, views
 from .calibration import TYPES, parse_value
 from .config import DEFAULT_PRINTER
+from .projects import STATUSES
 from .ratings import FAILURE_REASONS
 from .settings_git import diff_configs, short_changes
 
@@ -65,6 +66,12 @@ def create_app(services, ingress: bool = True, allowed_peer: str | None = INGRES
         web.get("/api/analysis", analysis_page),
         web.get("/api/calibration", calibration_page),
         web.post("/api/job/{job_id}/calibration", calibrate),
+        web.get("/api/projects", projects),
+        web.post("/api/projects", add_project),
+        web.get("/api/project/{project}", project),
+        web.post("/api/project/{project}", edit_project),
+        web.delete("/api/project/{project}", delete_project),
+        web.post("/api/job/{job_id}/project", assign_project),
         web.get("/api/maintenance", maintenance),
         web.post("/api/maintenance/{printer}", add_task),
         web.post("/api/maintenance/{printer}/confirm", confirm_tasks),
@@ -206,7 +213,8 @@ async def job(request):
         "filament_mm": record["filament_mm"], "energy_cost": record["energy_cost"],
         "filament_cost": record["filament_cost"], "total_cost": record["total_cost"],
         "calibration": s.calibrations.get(record["printer_id"], record["job_id"]),
-        "calibration_types": TYPES,
+        "calibration_types": TYPES, "project_id": record["project_id"], "projects": [
+            {"id": p["id"], "name": p["name"]} for p in s.projects.all("active")],
         "interruption": record["interruption"], "progress": record["progress"],
         "current_layer": record["current_layer"], "total_layer": record["total_layer"],
         "chamber_temp": record["chamber_temp"], "error_message": record["error_message"],
@@ -339,6 +347,67 @@ async def calibrate(request):
     s.calibrations.save(record, kind, tested, bool(existing and existing["detected"]), parse_value(str(body.get("value") or "")))
     await s.calibrations.set_value(record["printer_id"], record["job_id"], parse_value(str(body.get("value") or "")))
     return web.json_response(s.calibrations.get(record["printer_id"], record["job_id"]))
+
+
+def _project(request) -> dict:
+    s = _services(request)
+    try:
+        found = s.projects.get(int(request.match_info["project"]))
+    except ValueError:
+        found = None
+    if found is None:
+        raise web.HTTPNotFound(text="No such project")
+    return found
+
+
+async def projects(request):
+    return web.json_response({"projects": _services(request).projects.all(), "statuses": STATUSES})
+
+
+async def project(request):
+    s = _services(request)
+    found = _project(request)
+    rows = [_row(j, s.links) for j in s.projects.jobs(found["id"])]
+    return web.json_response({**found, "jobs": rows, "currency": summary.display_currency(s.options.currency)})
+
+
+def _save_project(s, body, project_id=None) -> int:
+    try:
+        return s.projects.save(body, project_id)
+    except (ValueError, KeyError, TypeError) as err:
+        raise web.HTTPBadRequest(text=f"Bad project: {err}") from err
+
+
+async def add_project(request):
+    s = _services(request)
+    project_id = _save_project(s, await _body(request))
+    await _after_task_change(s)
+    return web.json_response({"id": project_id})
+
+
+async def edit_project(request):
+    s = _services(request)
+    found = _project(request)
+    _save_project(s, await _body(request), found["id"])
+    await _after_task_change(s)
+    return web.json_response({"id": found["id"]})
+
+
+async def delete_project(request):
+    s = _services(request)
+    s.projects.delete(_project(request)["id"])
+    await _after_task_change(s)
+    return web.json_response({"ok": True})
+
+
+async def assign_project(request):
+    s = _services(request)
+    record = _get_job(request)
+    project_id = (await _body(request)).get("project_id")
+    if project_id is not None and s.projects.get(project_id) is None:
+        raise web.HTTPBadRequest(text="No such project")
+    s.projects.assign(record["job_id"], record["printer_id"], project_id)
+    return web.json_response({"project_id": project_id})
 
 
 async def maintenance(request):

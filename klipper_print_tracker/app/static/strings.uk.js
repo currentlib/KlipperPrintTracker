@@ -1,7 +1,7 @@
 // All UI text lives here, add a file like this one for another language.
 window.S = {
   app_title: "Print Tracker", printer: "Принтер", all_printers: "Усі принтери",
-  nav_home: "Головна", nav_prints: "Друки", nav_maintenance: "Обслуговування", nav_calibration: "Калібрування", nav_analysis: "Аналіз", back: "Назад",
+  nav_home: "Головна", nav_prints: "Друки", nav_maintenance: "Обслуговування", nav_calibration: "Калібрування", nav_analysis: "Аналіз", nav_projects: "Проєкти", back: "Назад",
   maintenance: "Обслуговування", maint_due: "Час виконати", maint_left: (value, unit) => `Залишилось ${value} ${unit}`,
   maint_over: (value, unit) => `Прострочено на ${value} ${unit}`, maint_snoozed: "Відкладено", maint_done: "Виконано",
   maint_disabled: "Вимкнено", maint_history: "Журнал", maint_edit: "Змінити", maint_add: "Додати завдання", maint_delete: "Видалити",
@@ -80,6 +80,13 @@ window.S = {
   cal_flow_yolo: "Потік, YOLO", cal_temperature: "Температурна вежа", cal_retraction: "Ретракція", cal_max_volumetric_speed: "Макс. обʼємна швидкість", cal_vfa: "VFA",
   cal_group_pa: "PA", cal_group_flow: "Потік", cal_group_temperature: "Температура", cal_group_retraction: "Ретракція",
   cal_group_max_volumetric_speed: "Обʼємна швидкість", cal_group_vfa: "VFA",
+  projects: "Проєкти", proj_empty: "Проєктів ще немає", proj_add: "Новий проєкт", proj_new: "Новий проєкт",
+  proj_active: "Активний", proj_done: "Завершений", proj_archived: "В архіві", proj_parts: "Деталі", proj_prints: "Друки проєкту",
+  proj_progress: (done, target) => `${done} з ${target}`, proj_time: "Час", proj_filament: "Пластик", proj_energy: "Енергія", proj_cost: "Вартість",
+  proj_failed: (value) => `з них на невдалі ${value}`, proj_left: "Залишилось", proj_left_state: (time, weight) => `приблизно ${time}, ${weight}`,
+  proj_left_none: "немає оцінки", proj_edit: "Змінити", proj_name: "Назва", proj_description: "Опис", proj_deadline: "Термін", proj_status: "Статус",
+  proj_targets: "Цілі: одна деталь у рядку, Назва = кількість", proj_rules_file: "Шаблон файлу, наприклад ShoeRack*", proj_rules_part: "Шаблон деталі, наприклад Bracket*",
+  proj_delete: "Видалити", proj_assign: "Додати до проєкту", proj_none: "Без проєкту",
   yes: "Так", no: "Ні", value_empty: "порожньо",
   part_success: "Успішність", preset_prints: "Друків із пресетом", preset_first: "Перший друк із цим пресетом",
   preset_history: "Історія змін",

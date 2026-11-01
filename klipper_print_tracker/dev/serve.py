@@ -25,6 +25,7 @@ from app.config import Options, PrinterOptions  # noqa: E402
 from app.db import Database  # noqa: E402
 from app.links import Links  # noqa: E402
 from app.maintenance import Maintenance  # noqa: E402
+from app.projects import Projects  # noqa: E402
 from app.ratings import Ratings  # noqa: E402
 from app.settings_git import SettingsHistory  # noqa: E402
 from app.slicer_meta import LayoutStore  # noqa: E402
@@ -34,6 +35,12 @@ SAMPLE = (ROOT / "tests/fixtures/sample_tail.gcode").read_text(encoding="utf-8")
 PARTS = ["Bracket", "ShoeRack", "Clip", "Hinge", "CableGuide", "Knob", "Spacer"]
 FILES = ["ShoeRack_PETG_1h40m", "Bracket_set_x4_PETG_2h15m", "CableGuide_desk_mount_right_side_v3_final_PLA_55m",
          "Hinge_0.2mm_PETG", "Knob_PLA_25m"]
+TAGS = ["stringing", "warping", "погана адгезія першого шару", "зсув шару", "недоекструзія", "артефакти шва"]
+REASONS = ["adhesion", "spaghetti", "clog", "other"]
+CALIBRATIONS = [("temperature", {"start": 230, "end": 190, "step": -5}, 240.0),
+                ("pa_tower", {"start": 0, "end": 0.1, "step": 0.002}, 0.042),
+                ("flow_pass2", None, 1.05), ("retraction", {"start": 0, "end": 2, "step": 0.1}, 0.8),
+                ("max_volumetric_speed", {"start": 5, "end": 25, "step": 0.5}, 18.0)]
 SPOOLS = ["SkyWire Чорний PETG", "LBL Білий Флок", "Polymaker PolyTerra PLA"]
 EDITS = [("; outer_wall_speed = 200", "; outer_wall_speed = 180"),
          ("; filament_flow_ratio = 1.067,1.05", "; filament_flow_ratio = 1.04,1.05"),
@@ -78,13 +85,15 @@ class Tracker:
         return 0
 
 
-async def seed(db, history, thumbs, count=30):
+async def seed(db, histories, calibrations, maintenance, projects, thumbs, count=34):
     rng = random.Random(7)
     text = SAMPLE
     now = time.time()
     thumbs.mkdir(parents=True, exist_ok=True)
     for i in range(count):
-        status = rng.choices(["completed", "cancelled", "error"], [8, 2, 1])[0]
+        printer = "printer2" if i % 6 == 5 else "printer1"
+        history = histories[printer]
+        status = rng.choices(["completed", "cancelled", "error"], [8, 2, 2])[0]
         if i % 6 == 3:
             old, new = EDITS[(i // 6) % len(EDITS)]
             text = text.replace(old, new)
@@ -100,6 +109,12 @@ async def seed(db, history, thumbs, count=30):
         energy_cost = round((kwh or 0) * 4.32, 2)
         total = round(filament_cost + energy_cost, 2)
         job_id = f"{i + 1:06}"
+        material = "PETG" if i % 3 else "PLA"
+        interruption = {"completed": None, "cancelled": "cancelled", "error": "error"}[status]
+        if status == "error" and i % 4 == 0:
+            interruption = "power_or_offline"
+        rated = rng.random() < 0.8
+        tags = rng.sample(TAGS, rng.randint(0, 2)) if rated and rng.random() < 0.5 else []
         (thumbs / f"{job_id}.png").write_bytes(thumbnail(i % 5))
         record = {
             "job_id": job_id, "filename": f"{FILES[i % len(FILES)]}.gcode", "status": status,
@@ -108,12 +123,40 @@ async def seed(db, history, thumbs, count=30):
             "printed": printed, "excluded": excluded, "grams": grams, "filament_mm": round(grams * 330),
             "kwh": kwh, "spool": SPOOLS[i % len(SPOOLS)], "price_kg": 350, "energy_cost": energy_cost,
             "filament_cost": filament_cost, "total_cost": total, "per_part": round(total / parts, 2) if parts else 0,
-            "wasted_cost": 0 if status == "completed" else total, "live_data": i % 9 != 4,
+            "wasted_cost": 0 if status == "completed" else total, "live_data": i % 9 != 4, "printer_id": printer,
+            "interruption": interruption, "progress": None if status == "completed" else round(rng.uniform(1, 95), 1),
+            "current_layer": None if status == "completed" else rng.choice([1, 1, 2, 7, 30, 64, 120]), "total_layer": 150,
+            "chamber_temp": None if status == "completed" else 41.0,
+            "error_message": "Heater extruder not heating at expected rate" if status == "error" and interruption == "error" else None,
+            "rating": ("good" if status == "completed" and rng.random() < 0.85 else "bad") if rated else None, "issues": tags,
+            "failure_reason": rng.choice(REASONS) if status != "completed" and rated else None,
+            "spool_id": 1 + i % 3,
+            "spool_check": {"required_g": grams, "remaining_g": grams * 0.7, "warnings": [
+                {"code": "not_enough", "required_g": grams, "remaining_g": round(grams * 0.7, 1)},
+                {"code": "preset_mismatch", "info": True, "preset": "SkyWire PETG Чорний"}], "paused": False} if i % 10 == 2 else None,
         }
         history.moonraker.parts = (text[:600], text)
         await history.snapshot(record)
         record["thumbnail"] = f"{job_id}.png"
+        record["material"] = material
+        record.pop("gcode_head", None)
         db.save_job(record)
+        if i % 7 == 1:
+            kind, tested, value = CALIBRATIONS[(i // 7) % len(CALIBRATIONS)]
+            calibrations.save(record, kind, tested, True, value)
+            await calibrations.set_value(printer, job_id, value)
+    for printer in histories:
+        maintenance.ensure_defaults(printer)
+    tasks = maintenance.tasks("printer1")
+    maintenance.confirm("printer1", {str(t["id"]): now - (40 + 13 * i) * 86400 for i, t in enumerate(tasks)})
+    await maintenance.done(tasks[3]["id"], "Протер, змастив")
+    projects.save({"name": "Полиця для взуття", "description": "Для передпокою", "deadline": "2026-12-20", "targets": [
+        {"part": "ShoeRack", "quantity": 10}, {"part": "Bracket", "quantity": 4}],
+        "rules": [{"kind": "file", "pattern": "ShoeRack*"}, {"kind": "file", "pattern": "Bracket*"}]})
+    projects.save({"name": "Органайзер кабелів", "targets": [{"part": "CableGuide", "quantity": 8}, {"part": "Clip", "quantity": 12}],
+                   "rules": [{"kind": "file", "pattern": "CableGuide*"}]})
+    for job in db.jobs(limit=1000)[0]:
+        await projects.job_finished(job)
 
 
 async def harness(request):
@@ -131,15 +174,22 @@ async def main():
     db = Database(data / "tracker.db")
     moonraker = Moonraker()
     layouts = LayoutStore(data / "layouts", auto_fetch=False)
-    history = SettingsHistory(db, moonraker, layouts, data)
+    printers = [PrinterOptions("printer1", "Creality K1C"), PrinterOptions("printer2", "Voron 0")]
+    histories = {p.id: SettingsHistory(db, moonraker, layouts, data, p.id) for p in printers}
+    thumbs = histories["printer1"].thumbs
+    calibrations = Calibrations(db, Options(), {})
+    maintenance = Maintenance(db, Options())
+    projects = Projects(db)
     if not args.empty:
-        await seed(db, history, history.thumbs)
-    tracker = Tracker()
-    tracker.moonraker, tracker.printer = moonraker, PrinterOptions(name="Creality K1C")
-    services = SimpleNamespace(options=Options(currency="UAH"), db=db, trackers={"printer1": tracker},
+        await seed(db, histories, calibrations, maintenance, projects, thumbs)
+    trackers = {}
+    for printer in printers[:None if not args.empty else 1]:
+        trackers[printer.id] = Tracker()
+        trackers[printer.id].moonraker, trackers[printer.id].printer = moonraker, printer
+    services = SimpleNamespace(options=Options(currency="UAH"), db=db, trackers=trackers,
                                layouts=layouts, links=Links("local_klipper_print_tracker"),
-                               thumbs=history.thumbs, mqtt=None, ratings=Ratings(db), maintenance=Maintenance(db, Options()),
-                               calibrations=Calibrations(db, Options(), {}))
+                               thumbs=thumbs, mqtt=None, ratings=Ratings(db), maintenance=maintenance,
+                               calibrations=calibrations, projects=projects)
     app = create_app(services, allowed_peer=None)
     app.router.add_get("/harness", harness)
     if args.fonts:

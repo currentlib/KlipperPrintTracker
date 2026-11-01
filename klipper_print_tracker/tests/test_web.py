@@ -12,6 +12,7 @@ from app.db import Database
 from app.links import Links
 from app.calibration import Calibrations
 from app.maintenance import Maintenance
+from app.projects import Projects
 from app.ratings import Ratings
 from app.settings_git import SettingsHistory
 from app.slicer_meta import LayoutStore
@@ -71,7 +72,7 @@ async def services(tmp_path):
     tracker.moonraker, tracker.printer = moonraker, NoMoonraker.printer
     yield SimpleNamespace(options=Options(currency="UAH"), db=db, trackers={"printer1": tracker},
                           layouts=layouts, links=links, thumbs=tmp_path / "thumbs", mqtt=None, ratings=Ratings(db),
-                          maintenance=Maintenance(db, Options()), calibrations=Calibrations(db, Options(), {}))
+                          maintenance=Maintenance(db, Options()), calibrations=Calibrations(db, Options(), {}), projects=Projects(db))
     db.close()
 
 
@@ -305,3 +306,18 @@ async def test_calibration_api(client, services):
     assert data["value"] == 240 and data["range_end"] == 190
     overview = await (await client.get("/api/calibration")).json()
     assert overview["presets"][0]["preset"] == "SkyWire PETG Чорний"
+
+
+async def test_projects_api(client):
+    created = await (await client.post("/api/projects", json={"name": "Полиця"})).json()
+    project = created["id"]
+    response = await client.post(f"/api/project/{project}", json={"targets": [{"part": "Bracket", "quantity": 4}]})
+    assert response.status == 200
+    assert (await client.post(f"/api/project/{project}", json={"targets": "x"})).status == 400
+    assert (await client.post("/api/job/printer1:000001/project", json={"project_id": project})).status == 200
+    data = await (await client.get(f"/api/project/{project}")).json()
+    assert data["done"] == 2 and data["jobs"][0]["job_id"] == "000001"
+    assert (await client.post("/api/job/printer1:000001/project", json={"project_id": 999})).status == 400
+    assert (await (await client.get("/api/projects")).json())["projects"][0]["name"] == "Полиця"
+    assert (await client.get("/api/project/abc")).status == 404
+    assert (await client.delete(f"/api/project/{project}")).status == 200

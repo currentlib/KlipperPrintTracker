@@ -92,6 +92,10 @@ def test_message_toggle_and_missing_energy():
     assert "⚙️" not in text and "кВт·год" not in text
 
 
+def test_message_project_line():
+    assert "📁 Проєкт Полиця: 6 / 10" in message({**JOB, "project_line": "Проєкт Полиця: 6 / 10"})
+
+
 def test_message_cancelled():
     text = message({**JOB, "event_type": "cancelled", "parts": 0, "excluded": "", "cost_per_part": 0})
     assert "Зупинено через 2 год 5 хв" in text and "/шт" not in text
