@@ -498,7 +498,8 @@ async function calibrationPage() {
     const history = p.history.map((h) => `<a class="list-row" href="#/job/${enc(`${h.printer_id}:${h.job_id}`)}">
       <span class="ellipsis">${S[`cal_${h.type}`]}${h.value === null ? ` · ${S.cal_no_value}` : ` · ${UI.number(h.value, 4)}`}</span>
       <span class="muted small">${e(UI.date(h.created_at))}</span></a>`).join("");
-    return section(`${heading("target", [p.preset, p.material].filter(Boolean).join(" · "))}
+    const owner = printers.length > 1 && !printer ? printerName(p.printer_id) : "";
+    return section(`${heading("target", [p.preset, p.material].filter(Boolean).join(" · "), e(owner))}
       ${latest ? card(latest) : ""}
       <div class="group-label">${S.cal_history}</div>${card(history)}`);
   }).join("");

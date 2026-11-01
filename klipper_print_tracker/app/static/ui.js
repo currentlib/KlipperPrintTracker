@@ -80,13 +80,16 @@ window.UI = (() => {
 
   // One series, zero baseline. Labels are HTML so they stay sharp in a stretched plot.
   function barChart(items, { format = number, max } = {}) {
-    const top = max ?? Math.max(1, ...items.map((item) => item.value));
+    // An even top keeps the middle label a whole number of prints.
+    const peak = Math.max(2, ...items.map((item) => item.value));
+    const top = max ?? peak + (peak % 2);
     const width = 100 / items.length;
+    const bar = Math.min(width * 0.7, 6);
     const bars = items.map((item, i) => {
       const height = (98 * item.value) / top;
       return `<g data-chart-tip="${e(item.label)}: ${e(format(item.value))}">
         <rect class="chart-hit" x="${i * width}" y="0" width="${width}" height="100"/>
-        <rect class="chart-bar" x="${i * width + width * 0.15}" y="${100 - height}" width="${width * 0.7}" height="${height}"/></g>`;
+        <rect class="chart-bar" x="${i * width + (width - bar) / 2}" y="${100 - height}" width="${bar}" height="${height}"/></g>`;
     }).join("");
     const grid = [0, 50, 100].map((y) => `<line x1="0" x2="100" y1="${y}" y2="${y}" vector-effect="non-scaling-stroke"/>`).join("");
     const labels = [items[0], items[Math.floor(items.length / 2)], items[items.length - 1]];

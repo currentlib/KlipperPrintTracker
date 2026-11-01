@@ -264,6 +264,7 @@ async def test_stats_and_tops(rig):
 
 def test_old_database_is_migrated(tmp_path):
     import sqlite3
+    import zlib
 
     from app.db import SCHEMA
     path = tmp_path / "old.db"
@@ -271,6 +272,9 @@ def test_old_database_is_migrated(tmp_path):
     conn.executescript(SCHEMA)
     conn.execute("INSERT INTO jobs (job_id, filename, status, end_time, printed, excluded) "
                  "VALUES ('000001', 'a.gcode', 'completed', 5, '{\"Clip\": 1}', '{}')")
+    conn.execute("UPDATE jobs SET config_hash = 'h', presets = ?", ('{"filament": ["B"]}',))
+    conn.execute("INSERT INTO configs VALUES ('h', ?)", (zlib.compress(
+        '{"filament_type": "PETG;PLA", "filament_settings_id": "\\"A\\";\\"B\\""}'.encode()),))
     conn.execute("INSERT INTO job_parts VALUES ('000001', 'Clip', 1, 0)")
     conn.execute("INSERT INTO job_presets VALUES ('000001', 'process', 'Draft')")
     conn.execute("INSERT INTO meta VALUES ('active', '{\"filename\": \"b.gcode\"}')")
@@ -284,6 +288,9 @@ def test_old_database_is_migrated(tmp_path):
     assert db.jobs(preset="Draft")[1] == 1
     assert (tmp_path / "old.db.pre-v2").exists()
     version = db.conn.execute("PRAGMA user_version").fetchone()[0]
+    assert version == 7
+    assert db.get_job("000001")["material"] == "PLA"
+    assert db.get_job("000001")["rating"] is None and db.tags()
     db.close()
 
     again = Database(path)
