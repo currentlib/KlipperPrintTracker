@@ -7,6 +7,7 @@ _LINE = re.compile(r"^;\s*([A-Za-z0-9_.\[\]-]+)\s*=\s?(.*)$")
 _HEADER = re.compile(r"generated (?:by|with)\s+(\S+?)[ _](?:SteamEngine )?(\d[\w.+-]*)", re.IGNORECASE)
 _BAMBU = re.compile(r"^;\s*(BambuStudio)\s+(\d[\w.+-]*)", re.MULTILINE)
 _FILAMENT = re.compile(r"^;\s*filament:\s*([\d,\s]+)$", re.MULTILINE)
+_OBJECT = re.compile(r"""^EXCLUDE_OBJECT_DEFINE\s+NAME=(?:"([^"]+)"|'([^']+)'|(\S+))""", re.MULTILINE)
 _VALUES = re.compile(r'"((?:[^"\\]|\\.)*)"|([^;,"]+)')
 # Slicers can embed printer host credentials, those never leave the G-code.
 _SECRET = re.compile(r"(print_?host|api_?key|password|token|secret)", re.IGNORECASE)
@@ -40,6 +41,11 @@ def used_filaments(head: str) -> list[int] | None:
     if not match:
         return None
     return [int(x) - 1 for x in re.findall(r"\d+", match.group(1))] or None
+
+
+def object_names(head: str) -> list[str]:
+    """Object names as the slicer wrote them."""
+    return [a or b or c for a, b, c in _OBJECT.findall(head)]
 
 
 def split_values(raw: str) -> list[str]:

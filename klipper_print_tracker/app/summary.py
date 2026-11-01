@@ -4,6 +4,11 @@ from datetime import datetime
 from .settings_git import short_changes
 
 MAX_CHANGED_KEYS = 10
+CURRENCY_SYMBOLS = {"UAH": "грн", "USD": "$", "EUR": "€", "GBP": "£", "PLN": "zł"}
+
+
+def display_currency(code: str) -> str:
+    return CURRENCY_SYMBOLS.get(code.upper(), code)
 
 
 def job_summary(record: dict, links, currency: str = "") -> dict:

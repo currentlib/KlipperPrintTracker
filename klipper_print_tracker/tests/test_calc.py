@@ -8,6 +8,12 @@ from app import calc
     ("Cube_id_0_copy_0", "Cube"),
     ("Holder v2.STEP_id_12_copy_0", "Holder v2"),
     ("plain_name", "plain_name"),
+    ("SHOERACK.STL_2_ID_0_COPY_0", "SHOERACK"),
+    ("SHOERACK.STL_2_ID_1_COPY_0", "SHOERACK"),
+    ("ShoeRack.stl_2_id_1_copy_3", "ShoeRack"),
+    ("PLATE.3MF_12_ID_3_COPY_0", "PLATE"),
+    ("Bracket.step", "Bracket"),
+    ("V1.5_MOUNT_ID_0_COPY_0", "V1.5_MOUNT"),
 ])
 def test_normalise_name(raw, expected):
     assert calc.normalise_name(raw) == expected
@@ -19,6 +25,19 @@ def test_completed_with_one_excluded_part():
     assert printed == {"Bracket": 1, "Clip": 1}
     assert excluded == {"Bracket": 1}
     assert planned == 3
+
+
+def test_upper_case_copies_are_one_part():
+    objects = ["SHOERACK.STL_2_ID_0_COPY_0", "SHOERACK.STL_2_ID_1_COPY_0"]
+    printed, excluded, planned = calc.count_parts(objects, [], "completed")
+    assert printed == {"SHOERACK": 2} and excluded == {} and planned == 2
+
+
+def test_restore_casing():
+    originals = ["ShoeRack.stl_2_id_0_copy_0", "ShoeRack.stl_2_id_1_copy_0", "Clip_id_2_copy_0"]
+    assert calc.restore_casing({"SHOERACK": 2, "CLIP": 1}, originals) == {"ShoeRack": 2, "Clip": 1}
+    assert calc.restore_casing({"OTHER": 1}, originals) == {"OTHER": 1}
+    assert calc.restore_casing({"SHOERACK": 1, "ShoeRack": 2}, originals) == {"ShoeRack": 3}
 
 
 def test_cancelled_prints_no_parts():

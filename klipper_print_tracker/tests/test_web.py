@@ -94,7 +94,7 @@ async def test_health_and_reconcile(client):
 
 async def test_stats(client):
     data = await (await client.get("/api/stats")).json()
-    assert data["total"] == 3 and data["currency"] == "UAH"
+    assert data["total"] == 3 and data["currency"] == "грн"
     assert data["recent"][0]["job_id"] == "000003"
     assert data["top_parts"][0] == {"name": "Bracket", "count": 4}
 
@@ -110,6 +110,13 @@ async def test_job_list_filters(client):
     assert {"type": "process", "name": "0.24mm Draft @Creality K1C"} in data["facets"]["presets"]
     assert (await (await client.get("/api/jobs?to=1969-01-01")).json())["total"] == 0
     assert (await client.get("/api/jobs?from=nonsense")).status == 400
+
+
+async def test_job_list_sort(client):
+    data = await (await client.get("/api/jobs?sort=spool&dir=asc")).json()
+    assert data["jobs"][0]["spool"] == "PETG" and data["jobs"][-1]["spool"] == "PLA"
+    data = await (await client.get("/api/jobs?sort=bobby;drop")).json()
+    assert data["jobs"][0]["job_id"] == "000003"
 
 
 async def test_csv_export_is_safe(client):
@@ -186,7 +193,7 @@ async def test_everything_resolves_under_the_ingress_prefix(client):
     headers = {"X-Ingress-Path": PREFIX.rstrip("/")}
     page = await (await client.get("/", headers=headers)).text()
     assets = re.findall(r'(?:src|href)="([^"]+)"', page)
-    assert len(assets) == 3
+    assert len(assets) == 6
     for asset in assets:
         url = urljoin(PREFIX, asset)
         assert url.startswith(PREFIX)
@@ -203,18 +210,21 @@ async def test_everything_resolves_under_the_ingress_prefix(client):
 
 
 def test_frontend_has_no_absolute_urls():
-    for name in ("index.html", "app.js", "style.css"):
+    for name in sorted(p.name for p in STATIC.iterdir() if p.suffix in (".html", ".js", ".css")):
         text = (STATIC / name).read_text(encoding="utf-8")
         assert not re.search(r"""(?:src|href|fetch\(|url\()\s*=?\s*["'`(]/""", text), name
         assert "http://" not in text and "https://" not in text
 
 
 def test_all_strings_are_defined():
-    script = (STATIC / "app.js").read_text(encoding="utf-8")
+    script = (STATIC / "app.js").read_text(encoding="utf-8") + (STATIC / "ui.js").read_text(encoding="utf-8")
     strings = (STATIC / "strings.uk.js").read_text(encoding="utf-8")
     defined = set(re.findall(r"(\w+):", strings))
     used = set(re.findall(r"\bS\.(\w+)", script))
     assert used <= defined, used - defined
+    keys = re.findall(r"""icon\(\s*["']([a-z0-9-]+)["']|iconName: ["']([a-z0-9-]+)["']""", script)
+    icons = (STATIC / "icons.js").read_text(encoding="utf-8")
+    assert keys and all(f'"{a or b}":' in icons for a, b in keys)
 
 
 def test_deep_link_route_regex_matches_real_paths():

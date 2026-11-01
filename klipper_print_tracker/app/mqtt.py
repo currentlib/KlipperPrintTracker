@@ -5,7 +5,7 @@ import logging
 
 import aiomqtt
 
-from .summary import job_summary, recent_row
+from .summary import display_currency, job_summary, recent_row
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ SENSORS = {
 }
 
 
-def discovery(options, version: str = "0.1.0") -> dict[str, dict]:
+def discovery(options, version: str = "0.2.0") -> dict[str, dict]:
     """Discovery topic -> payload for every entity."""
     device = {"identifiers": [BASE], "name": f"Print Tracker ({options.printer_name})",
               "manufacturer": "KlipperPrintTracker", "model": "Home Assistant add-on",
@@ -94,15 +94,16 @@ def discovery(options, version: str = "0.1.0") -> dict[str, dict]:
 def state_payloads(db, links, options, recent: int = 10) -> dict[str, dict]:
     """Retained state topic -> payload, derived from the database."""
     stats = db.stats()
+    currency = display_currency(options.currency)
     jobs, total = db.jobs(limit=recent)
     payloads = {
-        TOPICS["stats"]: {**stats, "currency": options.currency, "panel_url": links.panel(),
+        TOPICS["stats"]: {**stats, "currency": currency, "panel_url": links.panel(),
                           "electricity_price": options.electricity_price},
         TOPICS["recent"]: {"count": total, "jobs": [recent_row(j, links) for j in jobs]},
         TOPICS["top_parts"]: {"count": db.distinct_parts(), "parts": db.top_parts(), "excluded": db.top_excluded()},
     }
     if jobs:
-        payloads[TOPICS["last_print"]] = job_summary(jobs[0], links, options.currency)
+        payloads[TOPICS["last_print"]] = job_summary(jobs[0], links, currency)
     return payloads
 
 
@@ -189,7 +190,7 @@ class MqttPublisher:
 
     async def _flush_events(self):
         for record in self.db.pending_events():
-            summary = job_summary(record, self.links, self.options.currency)
+            summary = job_summary(record, self.links, display_currency(self.options.currency))
             payload = {"event_type": record["status"], **summary}
             await self._publish(TOPICS["event"], payload, retain=False)
             self.db.mark_event_sent(record["job_id"])

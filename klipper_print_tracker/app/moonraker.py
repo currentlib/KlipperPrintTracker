@@ -12,7 +12,8 @@ log = logging.getLogger(__name__)
 OBJECTS = {"print_stats": None, "exclude_object": None, "virtual_sdcard": None}
 TAIL_BYTES = 512 * 1024
 MAX_TAIL_BYTES = 8 * 1024 * 1024
-HEAD_BYTES = 4096
+# Object names come after the thumbnails, so the head has to reach past those.
+HEAD_BYTES = 512 * 1024
 MAX_BACKOFF = 60
 
 
@@ -61,7 +62,7 @@ class Moonraker:
     async def _on_connect(self):
         try:
             await self._call("server.connection.identify", {
-                "client_name": "KlipperPrintTracker", "version": "0.1.0",
+                "client_name": "KlipperPrintTracker", "version": "0.2.0",
                 "type": "other", "url": "https://github.com/currentlib/KlipperPrintTracker",
             })
         except RuntimeError as err:
@@ -165,7 +166,7 @@ class Moonraker:
             size *= 4
         range_head = {"Range": f"bytes=0-{HEAD_BYTES - 1}"}
         async with self.session.get(url, headers=range_head) as resp:
-            head = await resp.content.read(HEAD_BYTES)
+            head = await resp.read()
         return head.decode("utf-8", "replace"), tail.decode("utf-8", "replace")
 
     async def _stream_ends(self, resp) -> tuple[str, str]:

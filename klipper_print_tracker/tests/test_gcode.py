@@ -46,6 +46,13 @@ def test_other_slicers():
     assert gcode.parse_slicer("G28\n") == (None, None)
 
 
+def test_object_names():
+    head = 'G28\nEXCLUDE_OBJECT_DEFINE NAME=Cube_id_0_copy_0 CENTER=110,110 POLYGON=[[1,2]]\n' \
+           "EXCLUDE_OBJECT_DEFINE NAME='My Part_id_1_copy_0' CENTER=1,1\n; EXCLUDE_OBJECT_DEFINE NAME=no\n"
+    assert gcode.object_names(head) == ["Cube_id_0_copy_0", "My Part_id_1_copy_0"]
+    assert gcode.object_names("G28\n") == []
+
+
 def test_preset_list():
     raw = gcode.parse_config(SAMPLE)["filament_settings_id"]
     assert gcode.split_values(raw) == ["SkyWire PETG Чорний", "LBL - Білий Флок"]
