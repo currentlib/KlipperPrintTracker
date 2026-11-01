@@ -221,6 +221,23 @@ async def test_reconnect_resubscribes(rig):
     await settle(lambda: rig.fake.connections == 2, timeout=5)
 
 
+def test_existing_part_names_are_fixed_once(tmp_path):
+    path = tmp_path / "old.db"
+    db = Database(path)
+    db.save_job({"job_id": "1", "filename": "a", "status": "completed", "end_time": 1.0, "parts": 2,
+                 "printed": {"SHOERACK.STL_2_ID_0_COPY_0": 1, "SHOERACK.STL_2_ID_1_COPY_0": 1},
+                 "excluded": {"CLIP.STL_ID_0_COPY_0": 1}})
+    db._query("SELECT 1")
+    db._write("DELETE FROM meta WHERE key = 'part_names_fixed'")
+    db.close()
+    db = Database(path)
+    assert db.get_job("1")["printed"] == {"SHOERACK": 2}
+    assert db.get_job("1")["excluded"] == {"CLIP": 1}
+    assert db.top_parts() == [{"name": "SHOERACK", "count": 2}]
+    assert db.top_excluded()[0]["name"] == "CLIP"
+    db.close()
+
+
 async def test_stats_and_tops(rig):
     job = await rig.start_print()
     await rig.fake.emit({"exclude_object": {"excluded_objects": ["Bracket.stl_id_0_copy_3"]}})

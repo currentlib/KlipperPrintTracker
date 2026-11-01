@@ -8,7 +8,7 @@ from posixpath import dirname, join
 
 import aiohttp
 
-from . import gcode
+from . import calc, gcode
 
 log = logging.getLogger(__name__)
 
@@ -127,6 +127,8 @@ class SettingsHistory:
         except (aiohttp.ClientError, OSError, TimeoutError) as err:
             log.warning("Can't read G-code of job %s: %s", record["job_id"], err)
             parts = None
+        if parts:
+            self._restore_part_names(record, parts[0])
         config = gcode.parse_config(parts[1]) if parts else None
         if config is None:
             record["config_missing"] = True
@@ -142,6 +144,15 @@ class SettingsHistory:
         values = self._preset_values(config, record["presets"], layout, used)
         record["commit_sha"], record["preset_drift"] = await asyncio.to_thread(
             self.git.commit, record, config, values)
+
+    def _restore_part_names(self, record: dict, head: str):
+        originals = gcode.object_names(head)
+        if not originals:
+            return
+        for field in ("printed", "excluded"):
+            if field in record:
+                record[field] = calc.restore_casing(record[field], originals)
+        self.db.adopt_part_names(calc.normalise_name(name) for name in originals)
 
     @staticmethod
     def _presets(config: dict, used: list[int] | None) -> dict:

@@ -4,7 +4,10 @@ import sqlite3
 import threading
 import time
 import zlib
+from collections.abc import Callable, Iterable
 from pathlib import Path
+
+from .calc import normalise_name
 
 JSON_COLUMNS = ("printed", "excluded", "presets", "changes", "preset_drift")
 SORT_COLUMNS = {"date": "end_time", "file": "filename", "status": "status", "parts": "parts",
@@ -46,6 +49,9 @@ class Database:
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
         self.lock = threading.Lock()
+        if not self._get_meta("part_names_fixed"):
+            self._rename_parts(normalise_name)
+            self._set_meta("part_names_fixed", "1")
 
     def _query(self, sql: str, params=()) -> list[sqlite3.Row]:
         with self.lock:
@@ -162,6 +168,37 @@ class Database:
                               FROM jobs j JOIN job_parts p USING (job_id)
                               WHERE p.name = ? ORDER BY j.end_time""", (name,))
         return [self._job(r) for r in rows]
+
+    def _rename_parts(self, rename: Callable[[str], str]):
+        """Apply a new name to every stored part, parts that end up the same are merged."""
+
+        def renamed(names: dict) -> dict:
+            result: dict[str, int] = {}
+            for name, count in names.items():
+                result[rename(name)] = result.get(rename(name), 0) + count
+            return result
+
+        for row in self._query("SELECT job_id, printed, excluded FROM jobs"):
+            old_printed = json.loads(row["printed"] or "{}")
+            old_excluded = json.loads(row["excluded"] or "{}")
+            printed, excluded = renamed(old_printed), renamed(old_excluded)
+            if printed == old_printed and excluded == old_excluded:
+                continue
+            with self.lock, self.conn:
+                self.conn.execute("UPDATE jobs SET printed = ?, excluded = ? WHERE job_id = ?",
+                                  (json.dumps(printed, ensure_ascii=False),
+                                   json.dumps(excluded, ensure_ascii=False), row["job_id"]))
+                self.conn.execute("DELETE FROM job_parts WHERE job_id = ?", (row["job_id"],))
+                for name in set(printed) | set(excluded):
+                    self.conn.execute("INSERT INTO job_parts VALUES (?, ?, ?, ?)",
+                                      (row["job_id"], name, printed.get(name, 0), excluded.get(name, 0)))
+
+    def adopt_part_names(self, names: Iterable[str]):
+        """Older records that only know the upper case name get the real one."""
+        wanted = {name.upper(): name for name in names}
+        stored = {row["name"] for row in self._query("SELECT DISTINCT name FROM job_parts")}
+        if any(wanted.get(name.upper(), name) != name for name in stored):
+            self._rename_parts(lambda name: wanted.get(name.upper(), name))
 
     def pending_events(self) -> list[dict]:
         rows = self._query("SELECT * FROM jobs WHERE event_pending = 1 ORDER BY end_time")

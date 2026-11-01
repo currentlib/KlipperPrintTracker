@@ -1,13 +1,23 @@
 """Per-print calculations, ported from the YAML package."""
 import re
 
-_COPY_SUFFIX = re.compile(r"_id_\d+_copy_\d+$")
-_MODEL_EXT = re.compile(r"\.(stl|3mf|obj|step|stp)$", re.IGNORECASE)
+_COPY_SUFFIX = re.compile(r"_id_\d+_copy_\d+$", re.IGNORECASE)
+_MODEL_EXT = re.compile(r"\.(stl|3mf|obj|step|stp)(_\d+)?$", re.IGNORECASE)
 
 
 def normalise_name(name: str) -> str:
-    """Bracket.stl_id_0_copy_2 -> Bracket"""
+    """Bracket.stl_id_0_copy_2 -> Bracket, SHOERACK.STL_2_ID_1_COPY_0 -> SHOERACK"""
     return _MODEL_EXT.sub("", _COPY_SUFFIX.sub("", name))
+
+
+def restore_casing(parts: dict[str, int], originals: list[str]) -> dict[str, int]:
+    """Klipper reports object names in upper case, the G-code keeps the slicer's casing."""
+    casing = {normalise_name(name).upper(): normalise_name(name) for name in originals}
+    restored: dict[str, int] = {}
+    for name, count in parts.items():
+        key = casing.get(name.upper(), name)
+        restored[key] = restored.get(key, 0) + count
+    return restored
 
 
 def job_status(moonraker_status: str) -> str:
