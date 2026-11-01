@@ -44,6 +44,7 @@ class Options:
     spool_check_auto_pause: bool = False
     abrasive_patterns: str = "CF|GF|glow"
     thumbnail_retention_days: int = 365
+    calibration_stale_days: int = 180
     log_level: str = "info"
 
     def __post_init__(self):

@@ -33,7 +33,7 @@ function printerSwitch() {
 }
 
 function setToolbar({ title = S.app_title, back = false, tab = "", actions = "" }) {
-  const tabs = [["#/", S.nav_home, "home"], ["#/prints", S.nav_prints, "prints"], ["#/maintenance", S.nav_maintenance, "maintenance"], ["#/analysis", S.nav_analysis, "analysis"]]
+  const tabs = [["#/", S.nav_home, "home"], ["#/prints", S.nav_prints, "prints"], ["#/calibration", S.nav_calibration, "calibration"], ["#/maintenance", S.nav_maintenance, "maintenance"], ["#/analysis", S.nav_analysis, "analysis"]]
     .map(([href, label, id]) => `<a href="${href}" class="${id === tab ? "on" : ""}">${label}</a>`).join("");
   toolbarElement.innerHTML = `
     ${back ? `<a class="icon-button" href="#/prints" title="${S.back}" aria-label="${S.back}">${icon("arrow-left")}</a>` : ""}
@@ -349,7 +349,7 @@ async function jobPage(id) {
   const setting = (r) => tipRow(r, `${rawValue(r)}${unit(r)}`);
   return header
     + section(`${heading("thumb-up", S.rating)}${ratingBlock(j, tagList)}`, "span-all")
-    + failureBlock(j) + spoolBlock(j.spool_check)
+    + calibrationBlock(j) + failureBlock(j) + spoolBlock(j.spool_check)
     + section(`${heading("tune-variant", S.presets)}<div class="badges">${presetBadges(j)}</div>`, "span-all")
     + `<div class="columns span-all job-columns">
       ${section(`${heading("file-compare", S.changes)}${card(["file", "process", "filament"].map((k) => changeBlock(k, j.changes[k])).join(""))}${card(picker)}`)}
@@ -462,6 +462,48 @@ async function maintenancePage() {
   }).join("");
 }
 
+// --- calibration ---------------------------------------------------------
+
+function calibrationBlock(j) {
+  const c = j.calibration;
+  const options = j.calibration_types.map((t) => `<option value="${t}"${c?.type === t ? " selected" : ""}>${S[`cal_${t}`]}</option>`).join("");
+  const range = c && c.range_start !== null ? S.cal_range(UI.number(c.range_start, 4), UI.number(c.range_end, 4), UI.number(c.range_step, 4)) : "";
+  const form = `<form class="card-body task-form" data-calibrate="${e(j.ref)}">
+    <label class="form-field span-row">${S.cal_type}<select class="field" name="type">${options}</select></label>
+    ${c ? "" : ["start", "end", "step"].map((name) => `<label class="form-field wide">${S[`cal_${name}`]}<input class="field" name="${name}" inputmode="decimal"></label>`).join("")}
+    <label class="form-field span-row">${S.cal_value}<input class="field" name="value" inputmode="decimal" value="${e(c?.value ?? "")}"></label>
+    <div class="form-actions"><button class="text-button">${S.save}</button></div></form>`;
+  if (c) return section(`${heading("target", `${S.calibration}: ${S[`cal_${c.type}`]}`, e(range))}${card(form)}`, "span-all");
+  return section(card(`<details class="manage card-body"><summary>${S.cal_mark}</summary>${form}</details>`), "span-all");
+}
+
+function calibrationRow(group, c) {
+  const flags = [c.stale && badge(S.cal_stale, { iconName: "alert", variable: "--warning-color", cls: "warn" }),
+    c.new_spool && badge(S.cal_new_spool, {})].filter(Boolean).join("");
+  const mismatch = c.mismatch ? `<div class="note">${icon("alert")}${e(S.cal_mismatch(S[`cal_group_${group}`], UI.number(c.value, 4), UI.number(c.used, 4)))}</div>` : "";
+  return `<a class="list-row" href="#/job/${enc(`${c.printer_id}:${c.job_id}`)}">
+    <span>${S[`cal_group_${group}`]}: <b>${UI.number(c.value, 4)}</b></span><span class="muted small">${e(UI.date(c.created_at))}</span>
+    <span class="muted small span-row">${e([c.spool, S.cal_days(c.age_days)].filter(Boolean).join(" · "))}</span>
+    ${flags ? `<span class="badges span-row">${flags}</span>` : ""}</a>${mismatch}`;
+}
+
+async function calibrationPage() {
+  setToolbar({ tab: "calibration", title: S.calibration });
+  const d = await api(scoped("calibration"));
+  printers = d.printers;
+  setToolbar({ tab: "calibration", title: S.calibration });
+  if (!d.presets.length) return section(card(empty("target", S.cal_empty)), "span-all");
+  return d.presets.map((p) => {
+    const latest = Object.entries(p.latest).map(([group, c]) => calibrationRow(group, c)).join("");
+    const history = p.history.map((h) => `<a class="list-row" href="#/job/${enc(`${h.printer_id}:${h.job_id}`)}">
+      <span class="ellipsis">${S[`cal_${h.type}`]}${h.value === null ? ` · ${S.cal_no_value}` : ` · ${UI.number(h.value, 4)}`}</span>
+      <span class="muted small">${e(UI.date(h.created_at))}</span></a>`).join("");
+    return section(`${heading("target", [p.preset, p.material].filter(Boolean).join(" · "))}
+      ${latest ? card(latest) : ""}
+      <div class="group-label">${S.cal_history}</div>${card(history)}`);
+  }).join("");
+}
+
 // --- analysis ------------------------------------------------------------
 
 function dimensionRows(items) {
@@ -553,6 +595,7 @@ async function render() {
     else if (page === "prints") html = await prints();
     else if (page === "maintenance") html = await maintenancePage();
     else if (page === "analysis") html = await analysisPage();
+    else if (page === "calibration") html = await calibrationPage();
     else if (page === "compare") html = await comparePage(args[0], args[1]);
     else if (page === "part") html = await partPage(args.join("/"));
     else if (page === "preset") html = await presetPage(args[0], args.slice(1).join("/"));
@@ -677,6 +720,12 @@ document.addEventListener("submit", async (event) => {
     data.material_pattern = data.material_pattern || null;
     data.enabled = form.elements.enabled.checked ? 1 : 0;
     await post(`maintenance/task/${form.dataset.task}`, data);
+    render();
+    return;
+  }
+  if (form.dataset.calibrate) {
+    event.preventDefault();
+    await post(`job/${enc(form.dataset.calibrate)}/calibration`, Object.fromEntries(new FormData(form)));
     render();
     return;
   }

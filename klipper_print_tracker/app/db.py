@@ -23,7 +23,7 @@ JOB_COLUMNS = (
     "per_part", "wasted_cost", "live_data", "config_hash", "config_missing", "slicer",
     "slicer_version", "presets", "thumbnail", "commit_sha", "changes", "preset_drift",
     "material", "rating", "issues", "failure_reason", "note", "rated_at", "spool_check", "progress",
-    "current_layer", "total_layer", "chamber_temp", "interruption", "error_message",
+    "current_layer", "total_layer", "chamber_temp", "interruption", "error_message", "calibration",
 )
 EDITABLE_COLUMNS = {"rating", "issues", "failure_reason", "note", "rated_at", "calibration"}
 SCHEMA = """
@@ -113,7 +113,16 @@ def migrate_v5_failures(conn):
     conn.execute("ALTER TABLE jobs ADD COLUMN error_message TEXT")
 
 
-MIGRATIONS = [migrate_v2_printers, migrate_v3_results, migrate_v4_maintenance, migrate_v5_failures]
+def migrate_v6_calibrations(conn):
+    conn.execute("ALTER TABLE jobs ADD COLUMN calibration TEXT")
+    conn.execute("""CREATE TABLE calibrations (
+        printer_id TEXT NOT NULL, job_id TEXT NOT NULL, type TEXT NOT NULL, range_start REAL, range_end REAL,
+        range_step REAL, value REAL, value_at REAL, filament_preset TEXT, material TEXT, spool TEXT, spool_id INTEGER,
+        created_at REAL, detected INTEGER, PRIMARY KEY (printer_id, job_id))""")
+
+
+MIGRATIONS = [migrate_v2_printers, migrate_v3_results, migrate_v4_maintenance, migrate_v5_failures,
+              migrate_v6_calibrations]
 
 
 class Database:

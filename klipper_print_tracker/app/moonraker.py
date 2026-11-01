@@ -180,6 +180,18 @@ class Moonraker:
             head = await resp.read()
         return head.decode("utf-8", "replace"), tail.decode("utf-8", "replace")
 
+    async def scan_gcode(self, filename: str, pattern: bytes) -> str:
+        """Streams a whole file, only the lines that match stay in memory."""
+        wanted = re.compile(pattern)
+        found, rest = [], b""
+        async with self.session.get(self._file_url(filename)) as resp:
+            resp.raise_for_status()
+            async for chunk in resp.content.iter_chunked(256 * 1024):
+                lines = (rest + chunk).split(b"\n")
+                rest = lines.pop()
+                found.extend(line for line in lines if wanted.match(line))
+        return b"\n".join(found).decode("utf-8", "replace")
+
     async def _stream_ends(self, resp) -> tuple[str, str]:
         """No Range support: read the stream and keep only both ends."""
         head = bytearray()

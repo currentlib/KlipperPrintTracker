@@ -9,6 +9,7 @@ from pathlib import Path
 from aiohttp import web
 
 from . import analysis, summary, views
+from .calibration import TYPES, parse_value
 from .config import DEFAULT_PRINTER
 from .ratings import FAILURE_REASONS
 from .settings_git import diff_configs, short_changes
@@ -62,6 +63,8 @@ def create_app(services, ingress: bool = True, allowed_peer: str | None = INGRES
         web.get("/api/preset/{kind}/{name}", preset),
         web.post("/api/reconcile", reconcile),
         web.get("/api/analysis", analysis_page),
+        web.get("/api/calibration", calibration_page),
+        web.post("/api/job/{job_id}/calibration", calibrate),
         web.get("/api/maintenance", maintenance),
         web.post("/api/maintenance/{printer}", add_task),
         web.post("/api/maintenance/{printer}/confirm", confirm_tasks),
@@ -202,6 +205,8 @@ async def job(request):
         "filename": record["filename"], "printed": record["printed"], "excluded": record["excluded"],
         "filament_mm": record["filament_mm"], "energy_cost": record["energy_cost"],
         "filament_cost": record["filament_cost"], "total_cost": record["total_cost"],
+        "calibration": s.calibrations.get(record["printer_id"], record["job_id"]),
+        "calibration_types": TYPES,
         "interruption": record["interruption"], "progress": record["progress"],
         "current_layer": record["current_layer"], "total_layer": record["total_layer"],
         "chamber_temp": record["chamber_temp"], "error_message": record["error_message"],
@@ -310,6 +315,30 @@ async def analysis_page(request):
     return web.json_response({**analysis.analyse(jobs_list, q.get("include_power") == "1"),
                               "currency": summary.display_currency(s.options.currency),
                               "facets": s.db.facets(printer)})
+
+
+async def calibration_page(request):
+    s = _services(request)
+    return web.json_response({"presets": s.calibrations.overview(request.query.get("printer") or None),
+                              "printers": _printers(s)})
+
+
+async def calibrate(request):
+    """Marks a print by hand and takes the chosen value."""
+    s = _services(request)
+    record = _get_job(request)
+    body = await _body(request)
+    existing = s.calibrations.get(record["printer_id"], record["job_id"])
+    kind = body.get("type") or (existing or {}).get("type")
+    if kind not in TYPES:
+        raise web.HTTPBadRequest(text="Bad calibration type")
+    tested = {k: body.get(k) for k in ("start", "end", "step")}
+    if existing:
+        tested = {"start": existing["range_start"], "end": existing["range_end"], "step": existing["range_step"],
+                  **{k: v for k, v in tested.items() if v is not None}}
+    s.calibrations.save(record, kind, tested, bool(existing and existing["detected"]), parse_value(str(body.get("value") or "")))
+    await s.calibrations.set_value(record["printer_id"], record["job_id"], parse_value(str(body.get("value") or "")))
+    return web.json_response(s.calibrations.get(record["printer_id"], record["job_id"]))
 
 
 async def maintenance(request):

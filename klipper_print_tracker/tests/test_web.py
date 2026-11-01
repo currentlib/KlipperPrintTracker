@@ -10,6 +10,7 @@ from app import web as web_module
 from app.config import Options
 from app.db import Database
 from app.links import Links
+from app.calibration import Calibrations
 from app.maintenance import Maintenance
 from app.ratings import Ratings
 from app.settings_git import SettingsHistory
@@ -70,7 +71,7 @@ async def services(tmp_path):
     tracker.moonraker, tracker.printer = moonraker, NoMoonraker.printer
     yield SimpleNamespace(options=Options(currency="UAH"), db=db, trackers={"printer1": tracker},
                           layouts=layouts, links=links, thumbs=tmp_path / "thumbs", mqtt=None, ratings=Ratings(db),
-                          maintenance=Maintenance(db, Options()))
+                          maintenance=Maintenance(db, Options()), calibrations=Calibrations(db, Options(), {}))
     db.close()
 
 
@@ -291,3 +292,16 @@ async def test_maintenance_api(client, services):
 async def test_direct_port_cant_delete(services):
     async with TestClient(TestServer(create_app(services, ingress=False))) as test_client:
         assert (await test_client.delete("/api/maintenance/task/1")).status == 403
+
+
+async def test_calibration_api(client, services):
+    job = await (await client.get("/api/job/printer1:000001")).json()
+    assert job["calibration"] is None and "pa_tower" in job["calibration_types"]
+    assert (await client.post("/api/job/printer1:000001/calibration", json={"type": "nope"})).status == 400
+    response = await client.post("/api/job/printer1:000001/calibration", json={"type": "temperature", "start": 230, "end": 190, "step": -5, "value": "245"})
+    data = await response.json()
+    assert data["value"] == 245 and data["range_start"] == 230 and data["detected"] == 0
+    data = await (await client.post("/api/job/printer1:000001/calibration", json={"value": "240"})).json()
+    assert data["value"] == 240 and data["range_end"] == 190
+    overview = await (await client.get("/api/calibration")).json()
+    assert overview["presets"][0]["preset"] == "SkyWire PETG Чорний"

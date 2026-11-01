@@ -145,6 +145,7 @@ class SettingsHistory:
             parts = None
         if parts:
             self._restore_part_names(record, parts[0])
+            record["gcode_head"] = parts[0]
         config = gcode.parse_config(parts[1]) if parts else None
         if config is None:
             record["config_missing"] = True

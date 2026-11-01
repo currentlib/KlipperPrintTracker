@@ -137,8 +137,10 @@ variables:
     {% if status == 'completed' %}
       {{ [{'action': prefix ~ 'good', 'title': '👍 Добре'},
           {'action': prefix ~ 'bad', 'title': '👎 Погано'},
-          {'action': prefix ~ 'note', 'title': '💬 Нотатка', 'behavior': 'textInput',
-           'textInputButtonTitle': 'Зберегти', 'textInputPlaceholder': 'Нотатка до друку'}] }}
+          {'action': prefix ~ ('result' if job.calibration else 'note'),
+           'title': 'Ввести результат' if job.calibration else '💬 Нотатка', 'behavior': 'textInput',
+           'textInputButtonTitle': 'Зберегти',
+           'textInputPlaceholder': 'Обране значення' if job.calibration else 'Нотатка до друку'}] }}
     {% else %}
       {% set first = [{'action': prefix ~ 'fail-adhesion', 'title': 'Відклеїлось'},
                       {'action': prefix ~ 'fail-spaghetti', 'title': 'Спагеті / зсув'}] %}

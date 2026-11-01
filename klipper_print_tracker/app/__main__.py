@@ -7,6 +7,7 @@ import aiohttp
 from aiohttp import web
 
 from .analysis import Analysis
+from .calibration import Calibrations
 from .config import DATA_DIR, load_options
 from .db import Database
 from .housekeeping import Housekeeping
@@ -37,6 +38,7 @@ class Services:
     thumbs: object
     ratings: Ratings
     maintenance: Maintenance
+    calibrations: Calibrations
     mqtt: MqttPublisher | None = None
 
 
@@ -106,11 +108,16 @@ async def main():
 
         housekeeping = Housekeeping(DATA_DIR, options, db, [check_maintenance])
         mqtt.providers.extend([maintenance, housekeeping, Analysis(db)])
+        calibrations = Calibrations(db, options, {t.printer.id: t.moonraker for t in trackers.values()})
+        calibrations.listeners.append(mqtt)
+        mqtt.providers.append(calibrations)
+        for tracker in trackers.values():
+            tracker.listeners.insert(0, calibrations)
         ratings = Ratings(db, [mqtt])
         events = HomeAssistantEvents(session, supervisor.token)
-        events.handlers.extend([ratings.from_action, maintenance.from_action])
+        events.handlers.extend([ratings.from_action, maintenance.from_action, calibrations.from_action])
         events.handlers.extend(tracker.on_action for tracker in trackers.values())
-        services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", ratings, maintenance, mqtt)
+        services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", ratings, maintenance, calibrations, mqtt)
 
         runners = [await serve(create_app(services), INGRESS_PORT),
                    await serve(create_app(services, ingress=False), DIRECT_PORT)]

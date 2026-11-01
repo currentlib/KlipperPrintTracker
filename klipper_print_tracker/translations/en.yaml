@@ -69,6 +69,9 @@ configuration:
   thumbnail_retention_days:
     name: Keep thumbnails, days
     description: Older pictures are removed, the print records stay. 0 keeps them all.
+  calibration_stale_days:
+    name: Calibration goes stale after, days
+    description: Older calibrations get a hint to repeat them.
   log_level:
     name: Log level
     description: How much detail to write to the log.

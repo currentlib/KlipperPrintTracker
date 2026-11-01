@@ -126,6 +126,12 @@ def test_rating_actions_after_a_completed_print():
     assert items[2]["behavior"] == "textInput"
 
 
+def test_calibration_prints_ask_for_the_result():
+    items = actions({**JOB, **JOB_IDS, "calibration": "temperature"})
+    assert items[2]["action"] == "KPT_printer1_00004F_result" and items[2]["title"] == "Ввести результат"
+    assert len(items) == 3
+
+
 def test_failure_actions_fit_android():
     items = actions({**JOB, **JOB_IDS, "event_type": "cancelled"})
     assert len(items) == 3

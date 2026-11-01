@@ -341,3 +341,6 @@ a.list-row:hover { background: var(--secondary-background-color); }
 [data-chart-tip]:hover .chart-hit { fill: var(--divider-color); }
 .chart-tip { position: fixed; z-index: 5; padding: 4px 8px; border-radius: 4px; pointer-events: none; background: var(--secondary-background-color); color: var(--primary-text-color); font-size: var(--font-s); border: 1px solid var(--divider-color); }
 .span-row { grid-column: 1 / -1; }
+.form-field.span-row { grid-column: 1 / -1; }
+.form-field.wide { grid-column: auto; }
+.form-field.wide:nth-child(-n+2) { grid-column: auto; }

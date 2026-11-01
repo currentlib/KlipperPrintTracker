@@ -31,6 +31,7 @@ def job_summary(record: dict, links, currency: str = "") -> dict:
         "currency": currency,
         "rating": record.get("rating"),
         "failure_reason": record.get("failure_reason"),
+        "calibration": record.get("calibration"),
         "spool": record.get("spool"),
         "changed_settings": short_changes(record)[:MAX_CHANGED_KEYS],
         "url": links.job(record["job_id"], printer),
