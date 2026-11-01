@@ -206,6 +206,12 @@ class Database:
                               ORDER BY count DESC, name LIMIT ?""", (limit,))
         return [dict(r) for r in rows]
 
+    def facets(self) -> dict:
+        """Values for the filters of the prints list."""
+        presets = self._query("SELECT DISTINCT type, name FROM job_presets ORDER BY type, name")
+        spools = self._query("SELECT DISTINCT spool FROM jobs WHERE spool IS NOT NULL ORDER BY spool")
+        return {"presets": [dict(p) for p in presets], "spools": [s["spool"] for s in spools]}
+
     def distinct_parts(self) -> int:
         return self._query("SELECT COUNT(DISTINCT name) n FROM job_parts WHERE printed > 0")[0]["n"]
 
