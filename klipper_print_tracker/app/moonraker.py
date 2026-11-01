@@ -23,6 +23,7 @@ class Moonraker:
         self.session = session
         self.on_status: Callable[[dict, bool], Awaitable[None]] | None = None
         self.on_history: Callable[[str, dict], Awaitable[None]] | None = None
+        self.on_offline: Callable[[], Awaitable[None]] | None = None
         self._ws = None
         self._next_id = 0
         self._pending: dict[int, asyncio.Future] = {}
@@ -42,6 +43,8 @@ class Moonraker:
                 log.warning("Moonraker connection failed: %s", err)
             self._ws = None
             self.connected = False
+            if self.on_offline:
+                await self.on_offline()
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, MAX_BACKOFF)
 
@@ -71,7 +74,9 @@ class Moonraker:
 
     async def _subscribe(self):
         try:
-            result = await self._call("printer.objects.subscribe", {"objects": OBJECTS})
+            listed = await self._call("printer.objects.list")
+            chamber = {name: None for name in listed.get("objects", []) if "chamber" in name}
+            result = await self._call("printer.objects.subscribe", {"objects": {**OBJECTS, **chamber}})
         except RuntimeError as err:
             # Klipper isn't ready yet, notify_klippy_ready brings us back here.
             log.info("Subscribe failed, waiting for Klipper: %s", err)
@@ -104,6 +109,8 @@ class Moonraker:
             await self.on_history(params[0].get("action"), params[0].get("job") or {})
         elif method == "notify_klippy_ready":
             asyncio.create_task(self._subscribe())
+        elif method in ("notify_klippy_shutdown", "notify_klippy_disconnected") and self.on_offline:
+            await self.on_offline()
 
     # --- REST --------------------------------------------------------
 

@@ -36,6 +36,9 @@ class Listener:
     async def job_finished(self, record):
         self.finished.append(record)
 
+    async def spool_checked(self, printer_id, result):
+        pass
+
 
 class Rig:
     """A tracker wired to a fake Moonraker, restartable like the real add-on."""
@@ -58,6 +61,7 @@ class Rig:
                                listeners=[self.listener])
         self.moonraker.on_status = self.tracker.on_status
         self.moonraker.on_history = self.tracker.on_history
+        self.moonraker.on_offline = self.tracker.on_offline
         connections = self.fake.connections
         self.task = asyncio.create_task(self.moonraker.run())
         await settle(lambda: self.moonraker.connected and self.fake.connections > connections)
@@ -331,3 +335,50 @@ async def test_two_printers_stay_apart(tmp_path, monkeypatch):
     for fake in fakes:
         await fake.stop()
     db.close()
+
+
+async def test_failure_details_are_recorded(rig):
+    job = await rig.start_print()
+    await rig.fake.emit({"virtual_sdcard": {"progress": 0.4},
+                         "print_stats": {"info": {"current_layer": 12, "total_layer": 90}, "message": "Heater extruder not heating"},
+                         "temperature_sensor chamber_temp": {"temperature": 41.5}})
+    await settle(lambda: rig.tracker.live.get("chamber"))
+    assert "temperature_sensor chamber_temp" in rig.fake.subscribed
+    await rig.fake.finish_job(job, "error", filament_used=400)
+    await rig.fake.emit({"print_stats": {"state": "error"}})
+    await settle(lambda: rig.listener.finished)
+    rec = rig.db.get_job("000001")
+    assert rec["progress"] == 40 and rec["current_layer"] == 12 and rec["total_layer"] == 90
+    assert rec["chamber_temp"] == 41.5 and rec["interruption"] == "error"
+    assert rec["error_message"] == "Heater extruder not heating"
+
+
+async def test_connection_lost_mid_print_is_power_or_offline(rig):
+    job = await rig.start_print()
+    await rig.fake.drop_clients()
+    await settle(lambda: rig.tracker.active.get("offline"))
+    await rig.fake.finish_job(job, "error", filament_used=400)
+    rig.fake.status["print_stats"]["state"] = "error"
+    await settle(lambda: rig.listener.finished, timeout=6)
+    rec = rig.db.get_job("000001")
+    assert rec["interruption"] == "power_or_offline" and rec["progress"] == 40
+
+
+async def test_klippy_shutdown_marks_the_print(rig):
+    job = await rig.start_print()
+    await rig.fake.klippy("shutdown")
+    await settle(lambda: rig.tracker.active.get("offline"))
+    await rig.fake.finish_job(job, "klippy_shutdown")
+    await rig.fake.emit({"print_stats": {"state": "error"}})
+    await settle(lambda: rig.listener.finished)
+    assert rig.db.get_job("000001")["interruption"] == "power_or_offline"
+
+
+async def test_finished_while_offline_stays_a_success(rig):
+    job = await rig.start_print()
+    await rig.fake.drop_clients()
+    await settle(lambda: rig.tracker.active.get("offline"))
+    await rig.fake.finish_job(job, "completed", filament_used=1000)
+    rig.fake.status["print_stats"]["state"] = "complete"
+    await settle(lambda: rig.listener.finished, timeout=6)
+    assert rig.db.get_job("000001")["interruption"] is None

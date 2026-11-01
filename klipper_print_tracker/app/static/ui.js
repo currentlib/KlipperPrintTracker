@@ -78,11 +78,29 @@ window.UI = (() => {
     `<div class="skeleton-row"><span class="skeleton" style="width:40px;height:40px;border-radius:8px"></span>
      ${skeletonLine("24%")}${skeletonLine("32%")}${skeletonLine("12%")}</div>`).join(""));
 
+  // One series, zero baseline. Labels are HTML so they stay sharp in a stretched plot.
+  function barChart(items, { format = number, max } = {}) {
+    const top = max ?? Math.max(1, ...items.map((item) => item.value));
+    const width = 100 / items.length;
+    const bars = items.map((item, i) => {
+      const height = (98 * item.value) / top;
+      return `<g data-chart-tip="${e(item.label)}: ${e(format(item.value))}">
+        <rect class="chart-hit" x="${i * width}" y="0" width="${width}" height="100"/>
+        <rect class="chart-bar" x="${i * width + width * 0.15}" y="${100 - height}" width="${width * 0.7}" height="${height}"/></g>`;
+    }).join("");
+    const grid = [0, 50, 100].map((y) => `<line x1="0" x2="100" y1="${y}" y2="${y}" vector-effect="non-scaling-stroke"/>`).join("");
+    const labels = [items[0], items[Math.floor(items.length / 2)], items[items.length - 1]];
+    const axis = (items.length > 3 ? labels : items).map((item) => `<span>${e(item.label)}</span>`).join("");
+    return `<div class="chart"><div class="chart-scale"><span>${e(format(top))}</span><span>${e(format(top / 2))}</span><span>${e(format(0))}</span></div>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img"><g class="chart-grid">${grid}</g>${bars}</svg>
+      <div class="chart-axis">${axis}</div></div>`;
+  }
+
   const statusIconName = (value) => (STATUS[value] || STATUS.error)[0];
   const statusVariable = (value) => (STATUS[value] || STATUS.error)[1];
   const setCurrency = (value) => { currency = value; };
   return {
-    statusIconName, statusVariable, e, icon, number, money, percent, kwh, grams, duration, date, status, statusBadge, statusIcon, statusLabel, heading,
+    barChart, statusIconName, statusVariable, e, icon, number, money, percent, kwh, grams, duration, date, status, statusBadge, statusIcon, statusLabel, heading,
     section, card, tile, badge, empty, thumb, skeletonTile, skeletonRows, setCurrency,
   };
 })();

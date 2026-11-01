@@ -32,11 +32,34 @@ class Tracker:
         self._last_added = None
         self._finish_task = None
         self._spool_task = None
+        self.live = {}
         self._lock = asyncio.Lock()
 
     # --- printer events ----------------------------------------------
 
+    async def on_offline(self):
+        if self.active and self.state in ACTIVE_STATES:
+            self.active["offline"] = True
+            self.db.set_active(self.active, self.printer.id)
+
+    def _track_live(self, status: dict):
+        """Changes every second, so it stays in memory instead of the database."""
+        stats = status.get("print_stats") or {}
+        info = stats.get("info") or {}
+        progress = (status.get("virtual_sdcard") or {}).get("progress")
+        if progress is not None:
+            self.live["progress"] = progress
+        for key in ("current_layer", "total_layer"):
+            if info.get(key) is not None:
+                self.live[key] = info[key]
+        if stats.get("message"):
+            self.live["message"] = stats["message"]
+        for name, values in status.items():
+            if "chamber" in name and (values or {}).get("temperature") is not None:
+                self.live["chamber"] = values["temperature"]
+
     async def on_status(self, status: dict, initial: bool = False):
+        self._track_live(status)
         stats = status.get("print_stats") or {}
         new_state = stats.get("state")
         if new_state and new_state != self.state:
@@ -53,6 +76,7 @@ class Tracker:
             self._schedule_finish()
 
     async def _begin(self, filename: str | None, resumed: bool):
+        self.live = {}
         if not filename:
             filename = await self._status_filename()
         self.active = {
@@ -234,7 +258,14 @@ class Tracker:
         kwh = calc.energy_delta((active or {}).get("start_kwh"), end_kwh)
         spool_id, spool_name, price_kg = await self._spool()
         price_kg = price_kg or self.options.default_filament_price
+        raw_status = job.get("status", "")
+        live = self.live if active else {}
         return {
+            "interruption": calc.interruption(raw_status, bool((active or {}).get("offline")), end_kwh),
+            "progress": calc.progress_percent(live.get("progress"), used_mm, float(metadata.get("filament_total") or 0)),
+            "current_layer": live.get("current_layer"), "total_layer": live.get("total_layer"),
+            "chamber_temp": live.get("chamber"),
+            "error_message": live.get("message") if status == "error" else None,
             "printer_id": self.printer.id, "job_id": job["job_id"], "filename": job.get("filename"),
             "status": status,
             "start_time": job.get("start_time"), "end_time": job.get("end_time"),

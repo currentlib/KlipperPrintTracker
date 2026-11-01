@@ -33,7 +33,7 @@ function printerSwitch() {
 }
 
 function setToolbar({ title = S.app_title, back = false, tab = "", actions = "" }) {
-  const tabs = [["#/", S.nav_home, "home"], ["#/prints", S.nav_prints, "prints"], ["#/maintenance", S.nav_maintenance, "maintenance"]]
+  const tabs = [["#/", S.nav_home, "home"], ["#/prints", S.nav_prints, "prints"], ["#/maintenance", S.nav_maintenance, "maintenance"], ["#/analysis", S.nav_analysis, "analysis"]]
     .map(([href, label, id]) => `<a href="${href}" class="${id === tab ? "on" : ""}">${label}</a>`).join("");
   toolbarElement.innerHTML = `
     ${back ? `<a class="icon-button" href="#/prints" title="${S.back}" aria-label="${S.back}">${icon("arrow-left")}</a>` : ""}
@@ -271,6 +271,19 @@ function presetBadges(j) {
   return items.join("");
 }
 
+function failureBlock(j) {
+  if (j.status === "completed" || !j.interruption) return "";
+  const details = [
+    j.progress !== null && S.at_progress(UI.percent(j.progress)),
+    j.current_layer && S.at_layer(j.current_layer, j.total_layer),
+    j.chamber_temp !== null && S.chamber(UI.number(j.chamber_temp, 0)),
+  ].filter(Boolean).join(" · ");
+  return section(`${heading("alert-circle", S.failure_details)}${card(`<div class="card-body">
+    <div>${e(S[`interrupted_${j.interruption}`] ?? j.interruption)}</div>
+    ${details ? `<div class="muted">${e(details)}</div>` : ""}
+    ${j.error_message ? `<div class="mono muted">${e(j.error_message)}</div>` : ""}</div>`)}`, "span-all");
+}
+
 function spoolBlock(check) {
   if (!check) return "";
   const text = {
@@ -336,7 +349,7 @@ async function jobPage(id) {
   const setting = (r) => tipRow(r, `${rawValue(r)}${unit(r)}`);
   return header
     + section(`${heading("thumb-up", S.rating)}${ratingBlock(j, tagList)}`, "span-all")
-    + spoolBlock(j.spool_check)
+    + failureBlock(j) + spoolBlock(j.spool_check)
     + section(`${heading("tune-variant", S.presets)}<div class="badges">${presetBadges(j)}</div>`, "span-all")
     + `<div class="columns span-all job-columns">
       ${section(`${heading("file-compare", S.changes)}${card(["file", "process", "filament"].map((k) => changeBlock(k, j.changes[k])).join(""))}${card(picker)}`)}
@@ -449,6 +462,74 @@ async function maintenancePage() {
   }).join("");
 }
 
+// --- analysis ------------------------------------------------------------
+
+function dimensionRows(items) {
+  return items.map((g) => {
+    const reasons = Object.entries(g.reasons).sort((a, b) => b[1] - a[1])
+      .map(([reason, count]) => `${S[`reason_${reason}`] ?? reason} x${count}`).join(", ");
+    return `<div class="list-row"><span class="ellipsis" title="${e(g.name)}">${e(g.name)}</span>
+      <span class="badge count">${g.failed}/${g.total}</span>
+      <span class="bar" style="--c:var(--error-color)"><i style="width:${g.rate}%"></i></span>
+      ${reasons ? `<span class="muted small span-row">${e(reasons)}</span>` : ""}</div>`;
+  }).join("") || empty("chart-box-outline", S.an_empty);
+}
+
+function dimensionTabs(dimensions) {
+  const names = Object.keys(dimensions);
+  const buttons = names.map((name, i) => `<button type="button" data-tab="${i}" class="${i ? "" : "on"}">${S[`dim_${name}`]}</button>`);
+  const panels = names.map((name, i) => `<div data-panel="${i}"${i ? " hidden" : ""}>${dimensionRows(dimensions[name])}</div>`);
+  return card(`<div class="tabs">${buttons.join("")}</div>${panels.join("")}`);
+}
+
+const tagRows = (items) => items.map((t) => `<div class="list-row"><span class="ellipsis">${e(t.tag)} · ${e(t.name)}</span>
+  <span class="badge count">${t.count}</span></div>`).join("") || empty("thumb-up", S.an_empty);
+
+async function analysisPage() {
+  setToolbar({ tab: "analysis", title: S.analysis });
+  const params = listParams();
+  const query = new URLSearchParams();
+  for (const key of ["days", "material", "include_power"]) if (params.get(key)) query.set(key, params.get(key));
+  const d = await api(scoped(`analysis?${query}`));
+  UI.setCurrency(d.currency);
+  const change = (name, value) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set(name, value); else next.delete(name);
+    return `#/analysis?${next}`;
+  };
+  const filters = `<div class="chips">
+    ${[30, 90, 365].map((days) => { const on = params.get("days") === String(days); return `<a class="chip ${on ? "on" : ""}" href="${e(change("days", on ? "" : days))}">${S[`period_${days}`]}</a>`; }).join("")}
+    ${selectChip("material", S.dim_material, d.facets.materials.map((m) => [m, m]), params.get("material") || "").replace("data-filter", "data-analysis-filter")}
+    <a class="chip ${params.get("include_power") ? "on" : ""}" href="${e(change("include_power", params.get("include_power") ? "" : "1"))}">${S.an_with_offline}</a></div>`;
+  const offline = d.offline && !params.get("include_power") ? `<div class="muted small">${e(S.an_offline(d.offline))}</div>` : "";
+  if (!d.total) return section(filters + card(empty("chart-box-outline", S.an_empty)), "span-all");
+  const hours = (value) => UI.duration(value * 60);
+  const count = (value) => UI.number(value, 0);
+  const percent = (value) => `${UI.number(value, 0)}%`;
+  const weekly = d.weekly.map((w) => ({ label: w.week, value: w.rate }));
+  return section(`${filters}${offline}<div class="tiles six">
+      ${tile({ name: S.an_success, state: `${UI.percent(d.success_rate)} · ${d.completed} з ${d.total}`, iconName: "check-decagram", variable: "--success-color" })}
+      ${tile({ name: S.an_failed, state: UI.number(d.failed, 0), iconName: "alert-circle", variable: "--error-color" })}
+      ${tile({ name: S.an_top_reason, state: d.top_reason ? S[`reason_${d.top_reason}`] : S.reason_unknown, iconName: "alert", variable: "--warning-color" })}
+      ${tile({ name: S.an_lost_time, state: hours(d.wasted.hours), iconName: "timer-outline", variable: "--primary-color" })}
+      ${tile({ name: S.an_lost_filament, state: UI.grams(d.wasted.grams), iconName: "printer-3d-nozzle", variable: "--state-icon-color" })}
+      ${tile({ name: S.an_lost_money, state: UI.money(d.wasted.cost), iconName: "cash-multiple", variable: "--accent-color" })}
+    </div>`, "span-all")
+    + section(`${heading("chart-box-outline", S.an_weekly)}${card(`<div class="card-body">${UI.barChart(weekly, { format: percent, max: 100 })}</div>`)}`, "span-all")
+    + `<div class="columns span-all">
+      ${section(`${heading("chart-box-outline", S.an_progress)}${card(`<div class="card-body">${UI.barChart(d.progress.map((b) => ({ label: b.label, value: b.count })), { format: count })}</div>`)}`)}
+      ${section(`${heading("chart-box-outline", S.an_layers)}${card(`<div class="card-body">${UI.barChart(d.layers.map((b) => ({ label: b.label, value: b.count })), { format: count })}</div>`)}`)}
+    </div>`
+    + section(`${heading("alert-circle", S.an_reasons)}${dimensionTabs(d.dimensions)}`, "span-all")
+    + `<div class="columns span-all">
+      ${section(`${heading("shape-outline", S.an_problem_parts)}${card(d.problem_parts.map((p) => `<a class="list-row" href="#/part/${enc(p.name)}">
+        <span class="ellipsis" title="${e(p.name)}">${e(p.name)}</span><span class="badge count">${UI.number(p.problem_rate, 0)}%</span>
+        <span class="muted small span-row">${e(S.an_problem_state(p.excluded, p.failed_prints))}</span></a>`).join("") || empty("check-circle", S.an_empty))}`)}
+      ${section(`${heading("thumb-down", `${S.an_tags}: ${S.an_tags_material}`)}${card(tagRows(d.tags_by_material))}`)}
+      ${section(`${heading("thumb-down", `${S.an_tags}: ${S.an_tags_preset}`)}${card(tagRows(d.tags_by_preset))}`)}
+    </div>`;
+}
+
 // --- router --------------------------------------------------------------
 
 const skeletonTiles = (count) => `<div class="tiles">${Array.from({ length: count }, UI.skeletonTile).join("")}</div>`;
@@ -471,6 +552,7 @@ async function render() {
     if (page === "job") html = await jobPage(args[0]);
     else if (page === "prints") html = await prints();
     else if (page === "maintenance") html = await maintenancePage();
+    else if (page === "analysis") html = await analysisPage();
     else if (page === "compare") html = await comparePage(args[0], args[1]);
     else if (page === "part") html = await partPage(args.join("/"));
     else if (page === "preset") html = await presetPage(args[0], args.slice(1).join("/"));
@@ -541,7 +623,25 @@ document.addEventListener("click", async (event) => {
   }
 });
 
+document.addEventListener("pointermove", (event) => {
+  const tip = document.getElementById("chart-tip");
+  const mark = event.target.closest?.("[data-chart-tip]");
+  tip.hidden = !mark;
+  if (mark) {
+    tip.textContent = mark.dataset.chartTip;
+    tip.style.left = `${Math.min(event.clientX + 12, window.innerWidth - tip.offsetWidth - 8)}px`;
+    tip.style.top = `${event.clientY + 12}px`;
+  }
+});
+
 document.addEventListener("change", (event) => {
+  if (event.target.dataset.analysisFilter) {
+    const next = new URLSearchParams(listParams());
+    if (event.target.value) next.set(event.target.dataset.analysisFilter, event.target.value);
+    else next.delete(event.target.dataset.analysisFilter);
+    location.hash = `#/analysis?${next}`;
+    return;
+  }
   if (event.target.dataset.reason !== undefined) {
     saveRating(event.target.closest(".rating"), { failure_reason: event.target.value || null });
     return;

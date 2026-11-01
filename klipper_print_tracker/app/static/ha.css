@@ -329,3 +329,15 @@ a.list-row:hover { background: var(--secondary-background-color); }
 .text-button.danger { color: var(--error-color); }
 .setup { display: flex; flex-direction: column; gap: 8px; }
 .setup-row { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 12px; align-items: center; }
+
+/* charts: one series, recessive grid, theme colors only */
+.chart { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 8px; }
+.chart svg { display: block; width: 100%; height: 160px; }
+.chart-scale { display: flex; flex-direction: column; justify-content: space-between; height: 160px; color: var(--secondary-text-color); font-size: var(--font-s); text-align: right; font-variant-numeric: tabular-nums; }
+.chart-axis { grid-column: 2; display: flex; justify-content: space-between; gap: 8px; color: var(--secondary-text-color); font-size: var(--font-s); }
+.chart-grid line { stroke: var(--divider-color); stroke-width: 1px; }
+.chart-hit { fill: transparent; }
+.chart-bar { fill: var(--primary-color); }
+[data-chart-tip]:hover .chart-hit { fill: var(--divider-color); }
+.chart-tip { position: fixed; z-index: 5; padding: 4px 8px; border-radius: 4px; pointer-events: none; background: var(--secondary-background-color); color: var(--primary-text-color); font-size: var(--font-s); border: 1px solid var(--divider-color); }
+.span-row { grid-column: 1 / -1; }

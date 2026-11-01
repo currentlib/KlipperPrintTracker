@@ -42,6 +42,27 @@ def count_parts(objects: list[str], excluded: list[str], status: str):
     return printed_names, excluded_names, len(objects)
 
 
+OFFLINE_STATUSES = ("klippy_shutdown", "klippy_disconnect", "interrupted", "server_exit")
+
+
+def interruption(raw_status: str, went_offline: bool, end_energy: float | None) -> str | None:
+    """Why a print stopped. power_or_offline can be left out of reliability numbers."""
+    if raw_status == "completed":
+        return None
+    if raw_status == "cancelled":
+        return "cancelled"
+    if raw_status in OFFLINE_STATUSES or went_offline or end_energy == 0:
+        return "power_or_offline"
+    return "error"
+
+
+def progress_percent(live: float | None, used_mm: float, total_mm: float) -> float | None:
+    """From virtual_sdcard while it's known, otherwise from the filament used."""
+    if live is not None:
+        return round(live * 100, 1)
+    return round(100 * used_mm / total_mm, 1) if total_mm else None
+
+
 def grams_used(metadata: dict | None, used_mm: float, status: str) -> float:
     """Slicer weight, scaled by the used/total ratio for unfinished prints."""
     metadata = metadata or {}

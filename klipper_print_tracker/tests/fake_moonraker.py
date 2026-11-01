@@ -71,6 +71,9 @@ class FakeMoonraker:
             if not ws.closed:
                 await ws.send_json({"jsonrpc": "2.0", "method": method, "params": params})
 
+    async def klippy(self, event: str):
+        await self._broadcast(f"notify_klippy_{event}", [])
+
     async def drop_clients(self):
         for ws in list(self.clients):
             await ws.close()
@@ -90,6 +93,10 @@ class FakeMoonraker:
             result = {"connection_id": 1}
             if data["method"] == "printer.objects.subscribe":
                 result = {"eventtime": 1.0, "status": self.status}
+                self.subscribed = data["params"]["objects"]
+            elif data["method"] == "printer.objects.list":
+                result = {"objects": ["print_stats", "exclude_object", "virtual_sdcard",
+                                      "temperature_sensor chamber_temp", "extruder"]}
             await ws.send_json({"jsonrpc": "2.0", "id": data["id"], "result": result})
         return ws
 

@@ -23,7 +23,7 @@ JOB_COLUMNS = (
     "per_part", "wasted_cost", "live_data", "config_hash", "config_missing", "slicer",
     "slicer_version", "presets", "thumbnail", "commit_sha", "changes", "preset_drift",
     "material", "rating", "issues", "failure_reason", "note", "rated_at", "spool_check", "progress",
-    "current_layer", "total_layer", "chamber_temp", "interruption",
+    "current_layer", "total_layer", "chamber_temp", "interruption", "error_message",
 )
 EDITABLE_COLUMNS = {"rating", "issues", "failure_reason", "note", "rated_at", "calibration"}
 SCHEMA = """
@@ -109,7 +109,11 @@ def migrate_v4_maintenance(conn):
         id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER, printer_id TEXT NOT NULL, done_at REAL, note TEXT, name TEXT)""")
 
 
-MIGRATIONS = [migrate_v2_printers, migrate_v3_results, migrate_v4_maintenance]
+def migrate_v5_failures(conn):
+    conn.execute("ALTER TABLE jobs ADD COLUMN error_message TEXT")
+
+
+MIGRATIONS = [migrate_v2_printers, migrate_v3_results, migrate_v4_maintenance, migrate_v5_failures]
 
 
 class Database:
@@ -226,7 +230,7 @@ class Database:
             self.conn.executemany("INSERT OR IGNORE INTO tags VALUES (?, ?)", [(n, i) for i, n in enumerate(names)])
 
     def jobs(self, printer=None, file=None, status=None, preset=None, spool=None, date_from=None,
-             date_to=None, rating=None, limit=100, offset=0, sort="date", descending=True) -> tuple[list[dict], int]:
+             date_to=None, rating=None, material=None, limit=100, offset=0, sort="date", descending=True) -> tuple[list[dict], int]:
         where, params = [], []
         if printer:
             where.append("printer_id = ?")
@@ -243,6 +247,9 @@ class Database:
         if spool:
             where.append("spool = ?")
             params.append(spool)
+        if material:
+            where.append("material = ?")
+            params.append(material)
         if rating == "none":
             where.append("rating IS NULL")
         elif rating:
@@ -375,7 +382,10 @@ class Database:
                                  WHERE ? IS NULL OR printer_id = ? ORDER BY type, name""", (printer, printer))
         spools = self._query("""SELECT DISTINCT spool FROM jobs WHERE spool IS NOT NULL
                                 AND (? IS NULL OR printer_id = ?) ORDER BY spool""", (printer, printer))
-        return {"presets": [dict(p) for p in presets], "spools": [s["spool"] for s in spools]}
+        materials = self._query("""SELECT DISTINCT material FROM jobs WHERE material IS NOT NULL
+                                   AND (? IS NULL OR printer_id = ?) ORDER BY material""", (printer, printer))
+        return {"presets": [dict(p) for p in presets], "spools": [s["spool"] for s in spools],
+                "materials": [m["material"] for m in materials]}
 
     def distinct_parts(self, printer: str | None = None) -> int:
         return self._query("""SELECT COUNT(DISTINCT name) n FROM job_parts WHERE printed > 0

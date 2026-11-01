@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import aiohttp
 from aiohttp import web
 
+from .analysis import Analysis
 from .config import DATA_DIR, load_options
 from .db import Database
 from .housekeeping import Housekeeping
@@ -79,6 +80,7 @@ async def main():
             tracker = Tracker(options, db, moonraker, supervisor, settings, printer=printer)
             moonraker.on_status = tracker.on_status
             moonraker.on_history = tracker.on_history
+            moonraker.on_offline = tracker.on_offline
             trackers[printer.id] = tracker
 
         async def rescan():
@@ -103,7 +105,7 @@ async def main():
             await mqtt.publish_states()
 
         housekeeping = Housekeeping(DATA_DIR, options, db, [check_maintenance])
-        mqtt.providers.extend([maintenance, housekeeping])
+        mqtt.providers.extend([maintenance, housekeeping, Analysis(db)])
         ratings = Ratings(db, [mqtt])
         events = HomeAssistantEvents(session, supervisor.token)
         events.handlers.extend([ratings.from_action, maintenance.from_action])

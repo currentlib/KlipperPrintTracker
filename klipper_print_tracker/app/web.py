@@ -2,12 +2,13 @@
 import csv
 import io
 import logging
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from aiohttp import web
 
-from . import summary, views
+from . import analysis, summary, views
 from .config import DEFAULT_PRINTER
 from .ratings import FAILURE_REASONS
 from .settings_git import diff_configs, short_changes
@@ -60,6 +61,7 @@ def create_app(services, ingress: bool = True, allowed_peer: str | None = INGRES
         web.get("/api/part/{name}", part),
         web.get("/api/preset/{kind}/{name}", preset),
         web.post("/api/reconcile", reconcile),
+        web.get("/api/analysis", analysis_page),
         web.get("/api/maintenance", maintenance),
         web.post("/api/maintenance/{printer}", add_task),
         web.post("/api/maintenance/{printer}/confirm", confirm_tasks),
@@ -200,6 +202,9 @@ async def job(request):
         "filename": record["filename"], "printed": record["printed"], "excluded": record["excluded"],
         "filament_mm": record["filament_mm"], "energy_cost": record["energy_cost"],
         "filament_cost": record["filament_cost"], "total_cost": record["total_cost"],
+        "interruption": record["interruption"], "progress": record["progress"],
+        "current_layer": record["current_layer"], "total_layer": record["total_layer"],
+        "chamber_temp": record["chamber_temp"], "error_message": record["error_message"],
         "wasted_cost": record["wasted_cost"], "config_missing": bool(record["config_missing"]),
         "slicer": record["slicer"], "slicer_version": record["slicer_version"],
         "spool_check": record["spool_check"], "presets": record["presets"] or {}, "commit": record["commit_sha"], "drift": drift, "changes": changes,
@@ -293,6 +298,18 @@ async def rate(request):
         raise web.HTTPBadRequest(text="Bad failure reason")
     updated = await _services(request).ratings.update(record["printer_id"], record["job_id"], **fields)
     return web.json_response(_row(updated, _services(request).links))
+
+
+async def analysis_page(request):
+    s = _services(request)
+    q = request.query
+    printer = q.get("printer") or None
+    days = _int(request, "days", 0)
+    since = time.time() - days * 86400 if days else None
+    jobs_list, _ = s.db.jobs(printer=printer, material=q.get("material") or None, date_from=since, limit=100000)
+    return web.json_response({**analysis.analyse(jobs_list, q.get("include_power") == "1"),
+                              "currency": summary.display_currency(s.options.currency),
+                              "facets": s.db.facets(printer)})
 
 
 async def maintenance(request):
