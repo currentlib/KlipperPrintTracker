@@ -89,6 +89,7 @@ async def main():
         ratings = Ratings(db, [mqtt])
         events = HomeAssistantEvents(session, supervisor.token)
         events.handlers.append(ratings.from_action)
+        events.handlers.extend(tracker.on_action for tracker in trackers.values())
         services = Services(options, db, trackers, layouts, links, DATA_DIR / "thumbs", ratings, mqtt)
 
         runners = [await serve(create_app(services), INGRESS_PORT),

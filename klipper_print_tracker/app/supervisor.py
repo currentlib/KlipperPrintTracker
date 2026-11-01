@@ -55,6 +55,18 @@ class Supervisor:
         except (TypeError, KeyError, ValueError):
             return None
 
+    async def fire_event(self, event_type: str, data: dict) -> bool:
+        """An event on HA's bus. Lost when HA is down, sensors keep the state."""
+        if not self.token:
+            return False
+        url = f"{self.base}/core/api/events/{event_type}"
+        try:
+            async with self.session.post(url, headers=self._headers, json=data) as resp:
+                return resp.status < 300
+        except (aiohttp.ClientError, OSError, TimeoutError) as err:
+            log.warning("Event %s failed: %s", event_type, err)
+            return False
+
     async def call_service(self, domain: str, service: str, data: dict) -> bool:
         if not self.token:
             return False

@@ -15,6 +15,9 @@ class GoogleSheets:
     async def current(self, printer_id, active):
         pass
 
+    async def spool_checked(self, printer_id, result):
+        pass
+
     async def job_finished(self, record: dict):
         if not self.options.google_sheets_config_entry:
             return

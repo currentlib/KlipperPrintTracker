@@ -28,6 +28,8 @@ options:
   currency: UAH
   google_sheets_worksheet: Print Tracker
   auto_fetch_layouts: true
+  spool_margin_percent: 5
+  spool_check_auto_pause: false
   log_level: info
 schema:
   printers:
@@ -49,4 +51,6 @@ schema:
   mqtt_password: password?
   direct_url: url?
   auto_fetch_layouts: bool
+  spool_margin_percent: float(0,)
+  spool_check_auto_pause: bool
   log_level: list(debug|info|warning|error)

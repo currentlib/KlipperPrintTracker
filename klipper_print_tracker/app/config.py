@@ -40,6 +40,8 @@ class Options:
     mqtt_password: str | None = None
     direct_url: str | None = None
     auto_fetch_layouts: bool = True
+    spool_margin_percent: float = 5
+    spool_check_auto_pause: bool = False
     log_level: str = "info"
 
     def __post_init__(self):

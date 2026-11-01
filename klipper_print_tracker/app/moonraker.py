@@ -123,6 +123,10 @@ class Moonraker:
             resp.raise_for_status()
             return (await resp.json())["result"]["status"]["exclude_object"]
 
+    async def pause(self):
+        async with self.session.post(self.url + "/printer/print/pause") as resp:
+            resp.raise_for_status()
+
     async def metadata(self, filename: str) -> dict:
         return await self._get("/server/files/metadata", filename=filename)
 

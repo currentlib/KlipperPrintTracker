@@ -66,15 +66,16 @@ def message(job, include_changes=True):
 def test_blueprint_structure():
     data = blueprint()
     inputs = data["blueprint"]["input"]
-    assert set(inputs) == {"event_entity", "notify_device", "camera", "statuses", "include_changes", "printer_filter"}
+    assert set(inputs) == {"event_entity", "notify_device", "camera", "statuses", "include_changes", "printer_filter", "spool_warnings"}
     assert data["blueprint"]["domain"] == "automation"
     assert data["triggers"][0]["entity_id"] == {"input": "event_entity"}
     assert inputs["notify_device"]["selector"]["device"]["filter"][0]["integration"] == "mobile_app"
+    assert {t["id"] for t in data["triggers"]} == {"finished", "spool"}
     for branch in ("then", "else"):
-        action = data["actions"][0][branch][0]
+        action = data["actions"][1][branch][0]
         assert action["domain"] == "mobile_app" and action["type"] == "notify"
         assert action["data"]["clickAction"] == action["data"]["url"] == "{{ job.url }}"
-    assert data["actions"][0]["then"][0]["data"]["image"].startswith("/api/camera_proxy/")
+    assert data["actions"][1]["then"][0]["data"]["image"].startswith("/api/camera_proxy/")
 
 
 def test_message_with_excluded_part_and_changes():
@@ -134,6 +135,16 @@ def test_failure_actions_fit_android():
 def test_failure_actions_on_ios_have_every_reason():
     items = actions({**JOB, **JOB_IDS, "event_type": "error"}, apple=True)
     assert [a["title"] for a in items][2] == "Засмічення / недоекструзія" and len(items) == 4
+
+
+def test_spool_message():
+    template = blueprint()["variables"]["spool_message"]
+    trigger = {"id": "spool", "event": {"data": {"file": "a.gcode", "warnings": [
+        {"code": "not_enough", "required_g": 80, "remaining_g": 40}, {"code": "preset_mismatch", "info": True},
+        {"code": "material_mismatch", "wanted": "PETG", "actual": "PLA"}]}}}
+    text = render(template, {"trigger": trigger})
+    assert "потрібно 80 г, лишилось 40 г" in text and "у G-code PETG, на котушці PLA" in text
+    assert "preset" not in text and render(template, {"trigger": {"id": "finished"}}).strip() == ""
 
 
 def test_rated_events_dont_break_the_title():

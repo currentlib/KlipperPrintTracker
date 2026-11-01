@@ -196,7 +196,7 @@ async def job(request):
         "filament_cost": record["filament_cost"], "total_cost": record["total_cost"],
         "wasted_cost": record["wasted_cost"], "config_missing": bool(record["config_missing"]),
         "slicer": record["slicer"], "slicer_version": record["slicer_version"],
-        "presets": record["presets"] or {}, "commit": record["commit_sha"], "drift": drift, "changes": changes,
+        "spool_check": record["spool_check"], "presets": record["presets"] or {}, "commit": record["commit_sha"], "drift": drift, "changes": changes,
         "settings": views.settings_tabs(config, layout) if config else []})
 
 

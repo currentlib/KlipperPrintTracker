@@ -57,6 +57,12 @@ configuration:
   auto_fetch_layouts:
     name: Fetch slicer layouts
     description: Generate metadata from OrcaSlicer sources when a slicer version is not bundled.
+  spool_margin_percent:
+    name: Spool margin
+    description: Spare filament, in percent, the active spool should have on top of what the print needs.
+  spool_check_auto_pause:
+    name: Pause on a spool problem
+    description: Pause automatically when the filament isn't enough or the material differs.
   log_level:
     name: Log level
     description: How much detail to write to the log.

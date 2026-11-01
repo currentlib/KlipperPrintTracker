@@ -18,6 +18,8 @@ class FakeMoonraker:
         self.metadata = {}
         self.thumbs: dict[str, bytes] = {}
         self.range_requests = 0
+        self.spoolman = True
+        self.pauses = 0
         self.range_supported = True
         self.clients: list[web.WebSocketResponse] = []
         self.server = None
@@ -32,6 +34,7 @@ class FakeMoonraker:
             web.get("/printer/objects/query", self.objects_query),
             web.get("/server/spoolman/spool_id", self.get_spool_id),
             web.post("/server/spoolman/proxy", self.spool_proxy),
+            web.post("/printer/print/pause", self.pause),
             web.get("/server/files/metadata", self.file_metadata),
             web.get("/server/files/gcodes/{path:.*}", self.file),
         ])
@@ -104,7 +107,14 @@ class FakeMoonraker:
         return web.json_response({"result": {"status": {
             "exclude_object": self.status["exclude_object"]}}})
 
+    async def pause(self, request):
+        self.pauses += 1
+        await self.emit({"print_stats": {"state": "paused"}})
+        return web.json_response({"result": "ok"})
+
     async def get_spool_id(self, request):
+        if not self.spoolman:
+            raise web.HTTPNotFound()
         return web.json_response({"result": {"spool_id": self.spool_id}})
 
     async def spool_proxy(self, request):

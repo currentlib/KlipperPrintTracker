@@ -271,6 +271,20 @@ function presetBadges(j) {
   return items.join("");
 }
 
+function spoolBlock(check) {
+  if (!check) return "";
+  const text = {
+    no_spool: () => S.spool_no_spool,
+    not_enough: (w) => S.spool_not_enough(UI.grams(w.required_g), UI.grams(w.remaining_g)),
+    material_mismatch: (w) => S.spool_material(w.wanted, w.actual),
+    preset_mismatch: (w) => S.spool_preset(w.preset),
+  };
+  const lines = check.warnings.map((w) => `<div class="note">${icon(w.info ? "tune-variant" : "alert")}${e(text[w.code](w))}</div>`);
+  if (check.paused) lines.push(`<div class="note">${icon("pause")}${S.spool_paused}</div>`);
+  const body = lines.length ? lines.join("") : empty("check-circle", S.spool_ok);
+  return section(`${heading("printer-3d-nozzle", S.spool_check)}${card(body)}`, "span-all");
+}
+
 function ratingBlock(j, tagList) {
   const button = (value, label, name, variable) => `<button type="button" class="chip ${j.rating === value ? "on" : ""}" data-rate="${value}" style="--c:var(${variable})">${icon(name)}${label}</button>`;
   const allTags = [...new Set([...tagList, ...j.issues])];
@@ -322,6 +336,7 @@ async function jobPage(id) {
   const setting = (r) => tipRow(r, `${rawValue(r)}${unit(r)}`);
   return header
     + section(`${heading("thumb-up", S.rating)}${ratingBlock(j, tagList)}`, "span-all")
+    + spoolBlock(j.spool_check)
     + section(`${heading("tune-variant", S.presets)}<div class="badges">${presetBadges(j)}</div>`, "span-all")
     + `<div class="columns span-all job-columns">
       ${section(`${heading("file-compare", S.changes)}${card(["file", "process", "filament"].map((k) => changeBlock(k, j.changes[k])).join(""))}${card(picker)}`)}

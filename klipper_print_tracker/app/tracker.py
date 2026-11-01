@@ -5,7 +5,7 @@ import time
 
 import aiohttp
 
-from . import calc
+from . import calc, gcode, spool_check
 from .config import PrinterOptions
 
 log = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ class Tracker:
         self.first_start = db.first_start()
         self._last_added = None
         self._finish_task = None
+        self._spool_task = None
         self._lock = asyncio.Lock()
 
     # --- printer events ----------------------------------------------
@@ -63,6 +64,59 @@ class Tracker:
         self._last_added = None
         self.db.set_active(self.active, self.printer.id)
         await self._notify("current", self.printer.id, self.active)
+        if not resumed:
+            self._spool_task = asyncio.create_task(self._check_spool(self.active))
+
+    async def _check_spool(self, active: dict):
+        try:
+            spool_id = await self.moonraker.spool_id()
+            spool = await self.moonraker.spool(spool_id) if spool_id is not None else None
+        except REST_ERRORS as err:
+            log.debug("Spoolman isn't available, no spool check: %s", err)
+            return
+        filename = active.get("filename")
+        metadata, parts = {}, None
+        try:
+            metadata = await self.moonraker.metadata(filename)
+            parts = await self.moonraker.gcode_parts(filename)
+        except REST_ERRORS as err:
+            log.debug("No file data for the spool check: %s", err)
+        config = gcode.parse_config(parts[1]) if parts else None
+        used = gcode.used_filaments(parts[0]) if parts else None
+        index = (used or [0])[0]
+        presets = gcode.split_values((config or {}).get("filament_settings_id", ""))
+        preset = presets[index] if index < len(presets) else None
+        material = gcode.material(config, preset) if config else None
+        material = material or (gcode.split_values(metadata.get("filament_type") or "") or [None])[0]
+        result = spool_check.check(spool_check.required_grams(metadata, config, index), spool, material, preset,
+                                   self.options.spool_margin_percent)
+        result["paused"] = False
+        active["spool_check"] = result
+        if self.active is active:
+            self.db.set_active(active, self.printer.id)
+        warn = spool_check.should_warn(result)
+        if warn and self.options.spool_check_auto_pause and spool_check.should_pause(result):
+            await self.pause()
+            result["paused"] = True
+        await self._notify("spool_checked", self.printer.id, result)
+        if warn:
+            await self.supervisor.fire_event("klipper_print_tracker_spool_warning", {
+                "printer_id": self.printer.id, "printer": self.printer.name, "file": filename, **result})
+
+    async def pause(self) -> bool:
+        try:
+            await self.moonraker.pause()
+            return True
+        except REST_ERRORS as err:
+            log.warning("Can't pause %s: %s", self.printer.id, err)
+            return False
+
+    async def on_action(self, printer_id: str, target: str, code: str, text: str | None) -> bool:
+        if printer_id != self.printer.id or code not in ("spool-pause", "spool-continue"):
+            return False
+        if code == "spool-pause":
+            await self.pause()
+        return True
 
     async def _status_filename(self) -> str | None:
         try:
@@ -189,6 +243,7 @@ class Tracker:
             "filament_mm": round(used_mm, 1), "grams": grams, "kwh": kwh,
             "spool_id": spool_id, "spool": spool_name, "price_kg": price_kg,
             "live_data": bool(active and active.get("live")),
+            "spool_check": (active or {}).get("spool_check"),
             "metadata": metadata,
             **calc.costs(kwh, self.options.electricity_price, grams, price_kg, parts, status),
         }

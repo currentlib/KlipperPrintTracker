@@ -310,3 +310,4 @@ a.list-row:hover { background: var(--secondary-background-color); }
 .manage summary { cursor: pointer; margin-bottom: 4px; }
 .row-note { display: flex; align-items: center; gap: 4px; padding: 4px 16px 8px; color: var(--secondary-text-color); font-size: var(--font-s); border-bottom: 1px solid var(--divider-color); }
 .table .icon-col { width: 40px; padding-left: 0; padding-right: 0; text-align: center; }
+.card > .note:first-child { border-top: 0; }

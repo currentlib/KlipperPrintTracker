@@ -48,7 +48,10 @@ SENSORS = {
                             "topic": "current", "attributes": True},
 }
 SHARED_EXTRA = {}
-PRINTER_EXTRA = {}
+PRINTER_EXTRA = {
+    "spool_check": {"name": "Spool check", "icon": "mdi:printer-3d-nozzle-alert", "topic": "spool",
+                    "value_template": "{{ value_json.state }}", "attributes": True},
+}
 
 
 class Scope:
@@ -252,6 +255,11 @@ class MqttPublisher:
         await self.publish_states()
         summary = job_summary(record, self.links, display_currency(self.options.currency))
         await self.publish_event(record["printer_id"], {**summary, "event_type": "rated"})
+
+    async def spool_checked(self, printer_id: str, result: dict):
+        if self.client:
+            state = "warning" if any(not w.get("info") for w in result["warnings"]) else "ok"
+            await self._publish(f"{BASE}/{printer_id}/spool", {**result, "state": state})
 
     # Tracker listener. Without a connection the data waits in the database.
 

@@ -53,6 +53,12 @@ blueprint:
       default: ""
       selector:
         text:
+    spool_warnings:
+      name: Spool warnings
+      description: Notify when the active spool doesn't suit the print that just started.
+      default: true
+      selector:
+        boolean:
     include_changes:
       name: Include settings changes
       description: Add a line with the settings changed since the previous print.
@@ -70,6 +76,10 @@ triggers:
     not_to:
       - unavailable
       - unknown
+    id: finished
+  - trigger: event
+    event_type: klipper_print_tracker_spool_warning
+    id: spool
 
 variables:
   camera: !input camera
@@ -77,8 +87,9 @@ variables:
   include_changes: !input include_changes
   printer_filter: !input printer_filter
   notify_device: !input notify_device
-  job: "{{ dict(trigger.to_state.attributes) }}"
-  status: "{{ job.event_type }}"
+  spool_warnings: !input spool_warnings
+  job: "{{ dict(trigger.to_state.attributes) if trigger.id == 'finished' else {} }}"
+  status: "{{ job.event_type if trigger.id == 'finished' else 'spool' }}"
   notification_title: >-
     {{ {'completed': '✅ Друк завершено',
         'cancelled': '⏹️ Друк скасовано',
@@ -108,6 +119,15 @@ variables:
     ⚙️ Змінено з минулого друку: {{ job.changed_settings | join(', ') }}
     {%- endif %}
 
+  spool_message: >-
+    {%- set data = trigger.event.data if trigger.id == 'spool' else {} -%}
+    {{ data.file | default('') }}{{ '\n' }}
+    {%- for w in data.warnings | default([]) if not w.info | default(false) -%}
+      {%- if w.code == 'no_spool' -%}Активну котушку не вибрано
+      {%- elif w.code == 'not_enough' -%}Може не вистачити пластику: потрібно {{ w.required_g }} г, лишилось {{ w.remaining_g }} г
+      {%- elif w.code == 'material_mismatch' -%}Матеріал не збігається: у G-code {{ w.wanted }}, на котушці {{ w.actual }}
+      {%- endif -%}{{ '\n' }}
+    {%- endfor -%}
   # Android shows three actions, iOS has room for every reason. The add-on reads the
   # replies from the event bus, so no other automation is needed.
   action_prefix: "KPT_{{ job.printer_id }}_{{ job.job_id }}_"
@@ -130,11 +150,30 @@ variables:
 
 conditions:
   - condition: template
-    value_template: "{{ status in statuses }}"
+    value_template: >-
+      {{ (status in statuses) if trigger.id == 'finished'
+         else (spool_warnings and (not printer_filter or trigger.event.data.printer_id == printer_filter)) }}
   - condition: template
-    value_template: "{{ not printer_filter or job.printer_id == printer_filter }}"
+    value_template: "{{ trigger.id == 'spool' or not printer_filter or job.printer_id == printer_filter }}"
 
 actions:
+  - if:
+      - condition: template
+        value_template: "{{ trigger.id == 'spool' }}"
+    then:
+      - domain: mobile_app
+        type: notify
+        device_id: !input notify_device
+        title: "{{ '⏸️ Друк на паузі: котушка' if trigger.event.data.paused else '⚠️ Перевірте котушку' }}"
+        message: "{{ spool_message }}"
+        data:
+          tag: print_tracker_spool
+          actions:
+            - action: "KPT_{{ trigger.event.data.printer_id }}_current_spool-pause"
+              title: ⏸️ Пауза
+            - action: "KPT_{{ trigger.event.data.printer_id }}_current_spool-continue"
+              title: ✔️ Продовжити
+      - stop: Spool warning sent
   - if:
       - condition: template
         value_template: "{{ camera | length > 0 }}"
