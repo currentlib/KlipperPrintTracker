@@ -14,6 +14,7 @@ BASE = "klipper_print_tracker"
 AVAILABILITY = f"{BASE}/availability"
 ONLINE, OFFLINE = "online", "offline"
 EVENT_TYPES = ["completed", "cancelled", "error"]
+BROKER_RETRY = 60
 TOPICS = {name: f"{BASE}/{name}" for name in (
     "stats", "last_print", "recent", "top_parts", "current", "current/availability", "event", "rescan")}
 SENSORS = {
@@ -137,8 +138,10 @@ class MqttPublisher:
     async def run(self):
         broker = await self._broker()
         if broker is None:
-            log.warning("No MQTT broker: entities are disabled, tracking and the UI keep working")
-            return
+            log.warning("No MQTT broker yet: entities wait for it, tracking and the UI keep working")
+        while broker is None:
+            await asyncio.sleep(BROKER_RETRY)
+            broker = await self._broker()
         backoff = 1
         will = aiomqtt.Will(AVAILABILITY, OFFLINE, retain=True)
         while True:

@@ -163,3 +163,24 @@ async def test_events_wait_for_the_broker(tmp_path, broker):
     assert json.loads(received[mqtt.TOPICS["event"]])["event_type"] == "completed"
     task.cancel()
     db.close()
+
+
+async def test_broker_that_appears_later(tmp_path, broker, monkeypatch):
+    monkeypatch.setattr(mqtt, "BROKER_RETRY", 0.01)
+
+    class LateSupervisor:
+        answers = [None, None, {"host": "127.0.0.1", "port": broker}]
+
+        async def mqtt_service(self):
+            return self.answers.pop(0)
+
+    db = Database(tmp_path / "t.db")
+    publisher = mqtt.MqttPublisher(Options(), db, LateSupervisor(), LINKS, None)
+    task = asyncio.create_task(publisher.run())
+    for _ in range(300):
+        if publisher.client:
+            break
+        await asyncio.sleep(0.01)
+    assert publisher.client
+    task.cancel()
+    db.close()

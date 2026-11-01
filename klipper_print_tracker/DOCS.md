@@ -95,7 +95,7 @@ Everything lives in `/data` (`tracker.db`, `thumbs/`, `git/`, `layouts/`), which
 
 ## Troubleshooting
 
-- **No entities:** check that the Mosquitto app and the MQTT integration are set up, then look for `No MQTT broker` in the log. Tracking and the UI work without MQTT.
+- **No entities:** check that the Mosquitto app and the MQTT integration are set up, then look for `No MQTT broker yet` in the log. The add-on keeps checking, so a broker added later is picked up. Tracking and the UI work without MQTT.
 - **Parts are 0:** Exclude objects is off in the slicer.
 - **No energy data:** check that `energy_sensor` exists and is a total counter. A print the add-on didn't see start has no energy value either, and so does a print started while Home Assistant was down.
 - **"Settings aren't available" on a print:** the G-code was deleted from the printer before the print was finalised.
