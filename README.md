@@ -56,6 +56,10 @@ pip install -r requirements.txt pytest pytest-asyncio pyyaml jinja2 amqtt
 pytest
 ```
 
+---
+
+## Result
+
 Google Sheet filled by the printer-host edition:
 
 ![Screenshot of the final sheet.](printer-host/img/gsheet_sample.png)
