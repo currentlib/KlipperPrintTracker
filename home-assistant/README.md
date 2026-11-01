@@ -1,6 +1,30 @@
-# KlipperPrintTracker - Home Assistant edition
+# KlipperPrintTracker - Home Assistant files
 
 **English** | [Українська](#українська)
+
+Files for Home Assistant that go with the [Print Tracker add-on](../klipper_print_tracker/DOCS.md), plus the older YAML-only edition.
+
+| File | What it is |
+|---|---|
+| `blueprints/automation/print_finished_notification.yaml` | Phone notification when a print ends |
+| `dashboards/printer_dashboard.yaml` | Dashboard on top of the add-on's entities (sections view, standard cards only) |
+| `packages/printer_extras.yaml` | Optional: pre-heat / cool-down scripts, fans-off and power-off automations |
+| `lite/print_tracker.yaml` | The frozen YAML-only tracker, for Home Assistant without add-ons |
+
+## With the add-on
+
+1. Install the add-on and let it finish one print, or at least start, so its entities exist.
+2. Import the blueprint with the button in the [root README](../README.md), then create an automation from it.
+3. Copy `packages/printer_extras.yaml` to `/config/packages/` if you want the extras, and replace the placeholders: `my_printer`, `switch.printer_plug`, `number.my_printer_output_pin_fan*`.
+4. Paste `dashboards/printer_dashboard.yaml` into a new dashboard: Settings > Dashboards > Add dashboard > ⋮ > Raw configuration editor. Replace `my_printer`, `switch.printer_plug`, `sensor.printer_plug_power` and `sensor.printer_plug_energy_today`. The add-on's own entities don't need editing.
+
+Cost on the dashboard uses `electricity_price` and `currency` from the add-on's options.
+
+---
+
+# Lite: YAML-only edition
+
+This edition is frozen. Use it only if your Home Assistant can't run add-ons. It has no settings history and no web UI.
 
 Track every 3D print in Home Assistant: printed and excluded parts, print status, duration, filament, energy, and cost per part. Nothing is installed on the printer and no slicer post-processing is needed: when a print ends, Home Assistant asks Moonraker for the details itself.
 
@@ -15,15 +39,12 @@ Track every 3D print in Home Assistant: printed and excluded parts, print status
 - **Per-part counters:** how many of each part you have printed in total.
 - **Phone notification** with a camera snapshot, e.g. "Printed 4 of 5 parts, excluded: Bracket".
 - **Google Sheets logging** (optional), through the official integration with no public Apps Script.
-- **Dashboard** with live print status, temperatures, power, and history.
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `packages/print_tracker.yaml` | The tracker: helpers, Moonraker requests, history sensor, automation |
-| `packages/printer_extras.yaml` | Optional: pre-heat / cool-down scripts, fans-off and power-off automations |
-| `dashboards/printer_dashboard.yaml` | Dashboard (sections view, standard cards only) |
+| `lite/print_tracker.yaml` | The tracker: helpers, Moonraker requests, history sensor, automation |
 
 ## Requirements
 
@@ -39,12 +60,12 @@ Track every 3D print in Home Assistant: printed and excluded parts, print status
    homeassistant:
      packages: !include_dir_named packages
    ```
-2. Copy both files from `packages/` to `/config/packages/`.
+2. Copy `lite/print_tracker.yaml` to `/config/packages/`.
 3. Replace the placeholders (Find & Replace):
 
    | Placeholder | Replace with |
    |---|---|
-   | `PRINTER_IP` | Printer IP. Moonraker port is `7125`; on Creality K1/K1C/K1 Max you can also use `PRINTER_IP:4408` |
+   | `PRINTER_IP:7125` | Printer IP and Moonraker port. On Creality K1/K1C/K1 Max you can also use port `4408` |
    | `my_printer` | Entity prefix of your Moonraker integration (e.g. `sensor.my_printer_current_print_state`) |
    | `switch.printer_plug` | Smart plug switch |
    | `sensor.printer_plug_energy_total` | Plug's **total** energy counter in kWh (not "today", or prints past midnight break) |
@@ -55,7 +76,6 @@ Track every 3D print in Home Assistant: printed and excluded parts, print status
 
 4. **Developer Tools → YAML → Check configuration → Restart.**
 5. Set your electricity tariff and default filament price in the `Print Tracker - ...` helpers.
-6. Paste `dashboards/printer_dashboard.yaml` into a new dashboard: Settings → Dashboards → Add dashboard → ⋮ → Raw configuration editor.
 
 Don't paste the package into the automation editor. It is a package with helpers, sensors, and an automation, so the editor will reject it with `not a valid option at 'input_number'`.
 
@@ -88,11 +108,16 @@ History lives in the attributes of `sensor.print_tracker` (a trigger-based templ
 
 - UI labels and notifications are in Ukrainian and the currency is UAH. Search for `грн` and the Ukrainian strings to translate.
 - Active spool detection assumes Spoolman entities are named `sensor.spoolman_spool_<id>`, where `<id>` is the Spoolman spool ID.
-- The dashboard uses `chamber_temp` and `mcu_temp` sensors that not every printer has. Remove those badges if yours doesn't.
 
 ---
 
 ## Українська
+
+Файли для Home Assistant до [add-on Print Tracker](../klipper_print_tracker/DOCS.md): blueprint сповіщень, дашборд, `printer_extras.yaml` і заморожена версія лише на YAML у `lite/`.
+
+**З add-on:** встанови add-on, імпортуй blueprint кнопкою з [кореневого README](../README.md), скопіюй `packages/printer_extras.yaml` у `/config/packages/` за потреби, встав `dashboards/printer_dashboard.yaml` через Raw configuration editor і заміни плейсхолдери `my_printer`, `switch.printer_plug`, `sensor.printer_plug_power`, `sensor.printer_plug_energy_today`. Сутності самого add-on міняти не треба.
+
+**Lite (заморожена версія, лише для HA без add-on):**
 
 Облік кожного 3D-друку в Home Assistant: надруковані та виключені деталі, статус, тривалість, пластик, енергія і собівартість деталі. На принтер нічого не ставиться, post-processing у слайсері не потрібен: після завершення друку HA сам питає Moonraker.
 
@@ -100,11 +125,10 @@ History lives in the attributes of `sensor.print_tracker` (a trigger-based templ
 
 **Встановлення:**
 1. Увімкни packages у `configuration.yaml` (див. приклад вище).
-2. Скопіюй файли з `packages/` у `/config/packages/`.
+2. Скопіюй `lite/print_tracker.yaml` у `/config/packages/`.
 3. Заміни плейсхолдери з таблиці вище.
 4. Інструменти розробника → YAML → Перевірити конфігурацію → Перезапустити.
 5. Встанови тариф і ціну пластику в хелперах `Print Tracker - ...`.
-6. Встав `dashboards/printer_dashboard.yaml` через Raw configuration editor нового дашборду.
 
 Package не можна вставляти в редактор автоматизацій, бо це не автоматизація, а набір хелперів, сенсорів і автоматизації.
 
